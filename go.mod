@@ -1,4 +1,4 @@
-module github.com/pawelkowalak/aidev
+module github.com/doubletabai/doubletab
 
 go 1.23.4
 
