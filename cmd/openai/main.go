@@ -7,21 +7,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/openai/openai-go"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 const (
 	mainWorkflowPrompt = `You are an AI assistant that helps developers build backend applications step by step. Your
 workflow always starts by defining a database schema before moving to API development. When a user describes an
-application, first confirm their entities, then suggest a normalized PostgreSQL database schema before continuing.`
-	generateSchemaPrompt = `You are an AI assistant that helps generate PostgreSQL schemas. 
-When the user describes an application, extract entities and fields, then return a structured JSON representation of the schema. 
+application, first confirm their entities, then suggest a normalized PostgreSQL database schema before continuing.
+Next, generate REST API endpoints for the schema, and finally, generate Go code for the API handlers.`
+	generateSchemaPrompt = `You are an AI assistant that helps generate PostgreSQL schemas.
+When the user describes an application, extract entities and fields, then return a structured JSON representation of the schema.
 The response must strictly follow this format:
 
 {
@@ -53,9 +56,41 @@ The response must strictly follow this format:
         {"method": "DELETE", "path": "/<resource>/{id}", "description": "Delete a record"}
     ]
 }`
+	applyEndpointsPrompt = `You are an AI assistant that helps developers generate REST API handler functions in Go for
+a given endpoints specification in JSON format:
+
+{
+    "resource": "<resource_name>",
+    "base_path": "/<resource>",
+    "endpoints": [
+        {"method": "GET", "path": "/<resource>", "description": "List all records"},
+        {"method": "POST", "path": "/<resource>", "description": "Create a new record"},
+        {"method": "GET", "path": "/<resource>/{id}", "description": "Get a specific record"},
+        {"method": "PUT", "path": "/<resource>/{id}", "description": "Update a record"},
+        {"method": "DELETE", "path": "/<resource>/{id}", "description": "Delete a record"}
+    ]
+}
+
+- ONLY generate contents of a Go file called <resource_name>.go.
+- Package name is "api".
+- Assume that you already have a router instance.
+- Assume that you already have a "service" with the database connection.
+- Handlers should be methods on that "service", so they should start with "func (s *service) ...".
+- Use standard Go libraries for http, json, and error handling.
+- No external dependencies like gorilla, gin, etc.
+- If you need to use database, use the "s.db" connection.
+- "s.db" is a service that has methods: "List", Get", "Create", "Update", "Delete". Don't write SQL queries, those are
+already implemented.
+`
 )
 
 func main() {
+	lvl, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to parse log level")
+	}
+	zerolog.SetGlobalLevel(lvl)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -72,9 +107,16 @@ func main() {
 
 	ts := NewToolService(db, openAICli)
 
-	question := "I want to develop a Contacts app. I will need object Contact with following fields: first_name, last_name, company_name, phone_number, email. For now single phone_number and email is enough."
-
-	log.Info().Msgf("Asking: %s", question)
+	fmt.Println("Welcome to the doubletab AI assistant for backend development! What would you like to build today?")
+	question := os.Getenv("INITIAL_QUERY")
+	if question != "" {
+		fmt.Printf("> %s\n", question)
+	} else {
+		question, err = getUserInput()
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to get user input")
+		}
+	}
 
 	params := openai.ChatCompletionNewParams{
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
@@ -134,6 +176,22 @@ func main() {
 							},
 						},
 						"required": []string{"schema"},
+					}),
+				}),
+			},
+			{
+				Type: openai.F(openai.ChatCompletionToolTypeFunction),
+				Function: openai.F(openai.FunctionDefinitionParam{
+					Name:        openai.String("apply_endpoints"),
+					Description: openai.String("Takes generated endpoints definition and creates appropriate file with Go code implementing handlers."),
+					Parameters: openai.F(openai.FunctionParameters{
+						"type": "object",
+						"properties": map[string]interface{}{
+							"endpoints": map[string]string{
+								"type": "string",
+							},
+						},
+						"required": []string{"endpoints"},
 					}),
 				}),
 			},
@@ -202,6 +260,16 @@ func main() {
 				endpointsJson := ts.generateEndpoints(ctx, schema)
 
 				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, endpointsJson))
+			case "apply_endpoints":
+				var args map[string]interface{}
+				if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
+					log.Fatal().Err(err).Msg("Failed to unmarshal function arguments")
+				}
+				endpointsJson := args["endpoints"].(string)
+
+				result := ts.applyEndpoints(ctx, endpointsJson)
+
+				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, result))
 			}
 		}
 	}
@@ -211,13 +279,11 @@ func getUserInput() (string, error) {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("> ")
 
-	// Read user input until newline
 	input, err := reader.ReadString('\n')
 	if err != nil {
 		return "", fmt.Errorf("failed to read input: %w", err)
 	}
 
-	// Trim newline and print result
 	return strings.TrimSpace(input), nil
 }
 
@@ -260,25 +326,6 @@ func (s *ToolService) generateSchema(ctx context.Context, question string) strin
 	return completion.Choices[0].Message.Content
 }
 
-func (s *ToolService) generateEndpoints(ctx context.Context, schema string) string {
-	log.Debug().Msgf("Creating endpoints for schema: %s", schema)
-	params := openai.ChatCompletionNewParams{
-		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage(generateEndpointsPrompt),
-			openai.UserMessage(schema),
-		}),
-		Model: openai.F(openai.ChatModelGPT4o),
-	}
-
-	completion, err := s.OpenAICli.Chat.Completions.New(ctx, params)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to get completion")
-	}
-
-	log.Debug().Msgf("Endpoints: %s", completion.Choices[0].Message.Content)
-	return completion.Choices[0].Message.Content
-}
-
 type Schema struct {
 	TableName string   `json:"table_name"`
 	Columns   []Column `json:"columns"`
@@ -310,6 +357,74 @@ func (s *ToolService) applySchema(ctx context.Context, schema string) string {
 	}
 
 	return "Table created successfully"
+}
+
+func (s *ToolService) generateEndpoints(ctx context.Context, schema string) string {
+	log.Debug().Msgf("Creating endpoints for schema: %s", schema)
+	params := openai.ChatCompletionNewParams{
+		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+			openai.SystemMessage(generateEndpointsPrompt),
+			openai.UserMessage(schema),
+		}),
+		Model: openai.F(openai.ChatModelGPT4o),
+	}
+
+	completion, err := s.OpenAICli.Chat.Completions.New(ctx, params)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to get completion")
+	}
+
+	log.Debug().Msgf("Endpoints: %s", completion.Choices[0].Message.Content)
+	return completion.Choices[0].Message.Content
+}
+
+type Endpoints struct {
+	Resource  string     `json:"resource"`
+	BasePath  string     `json:"base_path"`
+	Endpoints []Endpoint `json:"endpoints"`
+}
+
+type Endpoint struct {
+	Method      string `json:"method"`
+	Path        string `json:"path"`
+	Description string `json:"description"`
+}
+
+func (s *ToolService) applyEndpoints(ctx context.Context, endpoints string) string {
+	var endpointsObj Endpoints
+	if err := json.Unmarshal([]byte(endpoints), &endpointsObj); err != nil {
+		return fmt.Sprintf("Failed to unmarshal json endpoints: %v", err)
+	}
+
+	apiDir := path.Join(os.Getenv("PROJECT_ROOT"), "pkg", "api")
+	if err := os.MkdirAll(apiDir, 0755); err != nil {
+		return fmt.Sprintf("Failed to create directory")
+	}
+
+	fh, err := os.Create(path.Join(apiDir, fmt.Sprintf("%s.go", endpointsObj.Resource)))
+	if err != nil {
+		return fmt.Sprintf("Failed to open file")
+	}
+
+	params := openai.ChatCompletionNewParams{
+		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
+			openai.SystemMessage(applyEndpointsPrompt),
+			openai.UserMessage(endpoints),
+		}),
+		Model: openai.F(openai.ChatModelGPT4o),
+	}
+
+	completion, err := s.OpenAICli.Chat.Completions.New(ctx, params)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to get completion")
+	}
+
+	_, err = fh.WriteString(strings.TrimSuffix(strings.TrimPrefix(completion.Choices[0].Message.Content, "```go\n"), "```"))
+	if err != nil {
+		return fmt.Sprintf("Failed to write to file")
+	}
+
+	return "Endpoints created successfully"
 }
 
 func setupDB() (*sql.DB, error) {
