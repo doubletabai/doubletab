@@ -2,6 +2,8 @@
 
 DoubleTab is an open-source AI-powered development tool that helps users create software projects from scratch to production. Designed for developers, but accessible to anyone, it automates essential backend tasks such as database schema generation, API endpoint creation, and code generation—streamlining the development workflow.
 
+![screenshot.png](screenshot.png)
+
 ## Features
 
 - [x] Schema Generation – Define your database schema with natural language input.
