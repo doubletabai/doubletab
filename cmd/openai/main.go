@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -14,6 +13,7 @@ import (
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/openai/openai-go"
+	"github.com/pterm/pterm"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -107,12 +107,12 @@ func main() {
 
 	ts := NewToolService(db, openAICli)
 
-	fmt.Println("Welcome to the doubletab AI assistant for backend development! What would you like to build today?")
+	pterm.DefaultBasicText.Println("Welcome to the" + pterm.LightMagenta(" DoubleTab ") + "AI assistant for backend development! What would you like to build today?")
 	question := os.Getenv("INITIAL_QUERY")
 	if question != "" {
 		fmt.Printf("> %s\n", question)
 	} else {
-		question, err = getUserInput()
+		question, err = pterm.DefaultInteractiveTextInput.WithDefaultText(">").WithDelimiter(" ").Show()
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to get user input")
 		}
@@ -200,31 +200,44 @@ func main() {
 	}
 
 	for {
-		// Make initial chat completion request
-		completion, err := openAICli.Chat.Completions.New(ctx, params)
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to get completion")
+		stream := openAICli.Chat.Completions.NewStreaming(ctx, params)
+		acc := openai.ChatCompletionAccumulator{}
+
+		begin := false
+		for stream.Next() {
+			chunk := stream.Current()
+			acc.AddChunk(chunk)
+			if !begin && chunk.Choices[0].Delta.Content != "" {
+				begin = true
+				pterm.DefaultBasicText.Print(pterm.LightMagenta("DoubleTab: "))
+			}
+			pterm.DefaultBasicText.Print(chunk.Choices[0].Delta.Content)
+		}
+		if stream.Err() != nil {
+			log.Fatal().Err(stream.Err()).Msg("Failed to stream completion")
+		}
+		if begin {
+			pterm.DefaultBasicText.Println()
 		}
 
-		if completion.Choices[0].Message.Content != "" {
-			fmt.Printf("LLM: %s\n", completion.Choices[0].Message.Content)
-		}
+		toolCalls := acc.Choices[0].Message.ToolCalls
+		log.Debug().Msgf("Tool calls: %v", toolCalls)
+		log.Debug().Msgf("Finish reason: %s", acc.Choices[0].FinishReason)
 
-		toolCalls := completion.Choices[0].Message.ToolCalls
-
-		if len(toolCalls) == 0 && completion.Choices[0].FinishReason == "stop" {
-			nextStep, err := getUserInput()
+		if len(toolCalls) == 0 && acc.Choices[0].FinishReason == "stop" {
+			params.Messages.Value = append(params.Messages.Value, acc.Choices[0].Message)
+			nextStep, err := pterm.DefaultInteractiveTextInput.WithDefaultText(">").WithDelimiter(" ").Show()
 			if err != nil {
 				log.Fatal().Err(err).Msg("Failed to get user input")
 			}
 			params.Messages.Value = append(params.Messages.Value, openai.UserMessage(nextStep))
+			stream.Close()
 			continue
 		}
 
-		// If there was a function call, continue the conversation
-		params.Messages.Value = append(params.Messages.Value, completion.Choices[0].Message)
+		params.Messages.Value = append(params.Messages.Value, acc.Choices[0].Message)
 		for _, toolCall := range toolCalls {
-			log.Debug().Msgf("Tool call: %v", toolCall.Function.Name)
+			//pterm.DefaultBasicText.Printf("Using tool: %s\n", toolCall.Function.Name)
 			switch toolCall.Function.Name {
 			case "list_tables":
 				tables := ts.listTables(ctx)
@@ -272,19 +285,8 @@ func main() {
 				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, result))
 			}
 		}
+		stream.Close()
 	}
-}
-
-func getUserInput() (string, error) {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("> ")
-
-	input, err := reader.ReadString('\n')
-	if err != nil {
-		return "", fmt.Errorf("failed to read input: %w", err)
-	}
-
-	return strings.TrimSpace(input), nil
 }
 
 type ToolService struct {
@@ -300,6 +302,9 @@ func NewToolService(db *sqlx.DB, cli *openai.Client) *ToolService {
 }
 
 func (s *ToolService) listTables(ctx context.Context) string {
+	spinner, _ := pterm.DefaultSpinner.Start("Listing tables...")
+	defer spinner.Stop()
+
 	tables := make([]string, 0)
 	if err := s.DB.SelectContext(ctx, &tables, "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"); err != nil {
 		log.Fatal().Err(err).Msg("Failed to query database")
@@ -309,6 +314,9 @@ func (s *ToolService) listTables(ctx context.Context) string {
 }
 
 func (s *ToolService) generateSchema(ctx context.Context, question string) string {
+	spinner, _ := pterm.DefaultSpinner.Start("Generating schema...")
+	defer spinner.Stop()
+
 	log.Debug().Msgf("Creating schema for question: %s", question)
 	params := openai.ChatCompletionNewParams{
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
@@ -338,6 +346,9 @@ type Column struct {
 }
 
 func (s *ToolService) applySchema(ctx context.Context, schema string) string {
+	spinner, _ := pterm.DefaultSpinner.Start("Creating schema...")
+	defer spinner.Stop()
+
 	var schemaObj Schema
 	if err := json.Unmarshal([]byte(schema), &schemaObj); err != nil {
 		return fmt.Sprintf("Failed to unmarshal json schema: %v", err)
@@ -361,6 +372,9 @@ func (s *ToolService) applySchema(ctx context.Context, schema string) string {
 
 func (s *ToolService) generateEndpoints(ctx context.Context, schema string) string {
 	log.Debug().Msgf("Creating endpoints for schema: %s", schema)
+	spinner, _ := pterm.DefaultSpinner.Start("Generating endpoints...")
+	defer spinner.Stop()
+
 	params := openai.ChatCompletionNewParams{
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage(generateEndpointsPrompt),
@@ -405,6 +419,9 @@ func (s *ToolService) applyEndpoints(ctx context.Context, endpoints string) stri
 	if err != nil {
 		return fmt.Sprintf("Failed to open file")
 	}
+
+	spinner, _ := pterm.DefaultSpinner.Start("Creating endpoints...")
+	defer spinner.Stop()
 
 	params := openai.ChatCompletionNewParams{
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
