@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/openai/openai-go"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog"
@@ -19,9 +17,12 @@ import (
 
 const (
 	mainWorkflowPrompt = `You are an AI assistant that helps developers build backend applications step by step. Your
-workflow always starts by defining a database schema before moving to API development. When a user describes an
-application, first confirm their entities, then suggest a normalized PostgreSQL database schema before continuing.
-Next, generate REST API endpoints for the schema, and finally, generate Go code for the API handlers.`
+workflow is as follow:
+1. Agree with user on the entities and fields.
+2. Generate an OpenAPI 3.0 yaml specification.
+3. Generate PostgreSQL schema for the OpenAPI spec.
+4. Store generated schema in the database.
+`
 )
 
 func main() {
@@ -35,7 +36,7 @@ func main() {
 	defer cancel()
 
 	conn := fmt.Sprintf("host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
-		os.Getenv("PG_HOST"), os.Getenv("PG_PORT"), os.Getenv("PG_DB"), os.Getenv("PG_USER"), os.Getenv("PG_PASS"), os.Getenv("PG_SSL"))
+		os.Getenv("PGHOST"), os.Getenv("PGPORT"), os.Getenv("PGDATABASE"), os.Getenv("PGUSER"), os.Getenv("PGPASSWORD"), os.Getenv("PGSSL"))
 
 	db, err := sqlx.ConnectContext(ctx, "postgres", conn)
 	if err != nil {
@@ -45,7 +46,11 @@ func main() {
 
 	openAICli := openai.NewClient()
 
-	ts := tooling.New(db, openAICli)
+	ts, err := tooling.New(db, openAICli)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize tooling service")
+	}
+	defer ts.Clear()
 
 	pterm.DefaultBasicText.Println("Welcome to the" + pterm.LightMagenta(" DoubleTab ") + "AI assistant for backend development! What would you like to build today?")
 	question := os.Getenv("INITIAL_QUERY")
@@ -65,9 +70,9 @@ func main() {
 		}),
 		Tools: openai.F([]openai.ChatCompletionToolParam{
 			ts.ListTablesTool(),
+			ts.GenerateOpenAPISpecTool(),
 			ts.GenerateSchemaTool(),
 			ts.StoreSchemaTool(),
-			ts.GenerateEndpointsTool(),
 			ts.GenerateAndStoreHandlersCodeTool(),
 		}),
 		Model: openai.F(openai.ChatModelGPT4o),
@@ -113,48 +118,28 @@ func main() {
 		params.Messages.Value = append(params.Messages.Value, acc.Choices[0].Message)
 		for _, toolCall := range toolCalls {
 			switch toolCall.Function.Name {
+			case tooling.GenerateOpenAPISpecToolName:
+				resp := ts.GenerateOpenAPISpec(ctx, toolCall.Function.Arguments)
+				log.Debug().Msgf("Adding tool message to context: %s", toolCall.ID)
+				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
 			case tooling.ListTablesToolName:
-				tables := ts.ListTables(ctx)
+				resp := ts.ListTables(ctx)
 				log.Debug().Msgf("Adding tool message to context: %s", toolCall.ID)
-				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, tables))
+				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
 			case tooling.GenerateSchemaToolName:
-				schemaJson := ts.GenerateSchema(ctx, toolCall.Function.Arguments)
+				resp := ts.GenerateSchema(ctx, toolCall.Function.Arguments)
 				log.Debug().Msgf("Adding tool message to context: %s", toolCall.ID)
-				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, schemaJson))
+				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
 			case tooling.StoreSchemaToolName:
 				resp := ts.StoreSchema(ctx, toolCall.Function.Arguments)
 				log.Debug().Msgf("Adding tool message to context: %s", toolCall.ID)
 				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
-			case tooling.GenerateEndpointsToolName:
-				endpointsJson := ts.GenerateEndpoints(ctx, toolCall.Function.Arguments)
-				log.Debug().Msgf("Adding tool message to context: %s", toolCall.ID)
-				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, endpointsJson))
 			case tooling.GenerateAndStoreHandlersCodeToolName:
-				result := ts.GenerateAndStoreHandlersCode(ctx, toolCall.Function.Arguments)
+				resp := ts.GenerateAndStoreHandlersCode(ctx, toolCall.Function.Arguments)
 				log.Debug().Msgf("Adding tool message to context: %s", toolCall.ID)
-				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, result))
+				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
 			}
 		}
 		stream.Close()
 	}
-}
-
-func setupDB() (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", "vectors.db")
-	if err != nil {
-		return nil, err
-	}
-
-	// Enable vector extension (SQLite version of PGVector)
-	_, err = db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS embeddings USING vector(1536)") // 1536 dims for OpenAI embeddings
-	if err != nil {
-		return nil, err
-	}
-
-	return db, nil
-}
-
-func storeEmbedding(db *sql.DB, text string, embedding []float64) error {
-	_, err := db.Exec("INSERT INTO embeddings (text, vector) VALUES (?, ?)", text, embedding)
-	return err
 }

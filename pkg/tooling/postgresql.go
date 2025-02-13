@@ -13,8 +13,9 @@ import (
 
 const (
 	generateSchemaPrompt = `You are an AI assistant that helps generate PostgreSQL schemas.
-When the user describes an application, extract entities and fields, then return a structured JSON representation of the schema.
-The response must strictly follow this format:
+
+Based on given OpenAPI 3.0 spec, generate a PostgreSQL schema in a structured JSON format. The response must strictly
+follow this format:
 
 {
     "table_name": "<table_name>",
@@ -24,8 +25,10 @@ The response must strictly follow this format:
     ]
 }
 
-- Use appropriate SQL data types (e.g., VARCHAR, INT, TIMESTAMP).
 - Ensure every table has a PRIMARY KEY.
+- For IDs which are UUIDs, use TEXT data type without auto generation.
+- Use appropriate SQL data types (e.g., TEXT, INT, TIMESTAMP).
+- Prefer TEXT over VARCHAR.
 - Set NOT NULL for required fields.
 - Use UNIQUE constraints when necessary.
 - Do NOT include CREATE TABLE statements, only structured JSON output.`
@@ -50,15 +53,15 @@ func (s *Service) GenerateSchemaTool() openai.ChatCompletionToolParam {
 		Type: openai.F(openai.ChatCompletionToolTypeFunction),
 		Function: openai.F(openai.FunctionDefinitionParam{
 			Name:        openai.String(GenerateSchemaToolName),
-			Description: openai.String("Generates a PostgreSQL schema in JSON format based on user input about the domain."),
+			Description: openai.String("Generates a PostgreSQL schema in JSON format based on OpenAPI 3.0 specification."),
 			Parameters: openai.F(openai.FunctionParameters{
 				"type": "object",
 				"properties": map[string]interface{}{
-					"user_input": map[string]string{
+					"openapi_spec": map[string]string{
 						"type": "string",
 					},
 				},
-				"required": []string{"user_input"},
+				"required": []string{"openapi_spec"},
 			}),
 		}),
 	}
@@ -105,13 +108,12 @@ func (s *Service) GenerateSchema(ctx context.Context, arguments string) string {
 	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
 		return fmt.Sprintf("Failed to unmarshal function arguments: %v", err)
 	}
-	userInput := args["user_input"].(string)
+	openAPISpec := args["openapi_spec"].(string)
 
-	log.Debug().Msgf("Creating schema for question: %s", userInput)
 	params := openai.ChatCompletionNewParams{
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage(generateSchemaPrompt),
-			openai.UserMessage(userInput),
+			openai.UserMessage(openAPISpec),
 		}),
 		Model: openai.F(openai.ChatModelGPT4o),
 	}
