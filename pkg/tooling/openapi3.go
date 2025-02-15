@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path"
 
 	"github.com/openai/openai-go"
 	"github.com/pterm/pterm"
@@ -29,7 +31,7 @@ The API should:
 - Follow OpenAPI 3.0 syntax.
 - Include proper request/response models.
 
-Return only valid OpenAPI YAML.
+Return only valid OpenAPI YAML in raw format (without yaml code block markdown syntax).
 `
 )
 
@@ -76,6 +78,21 @@ func (s *Service) GenerateOpenAPISpec(ctx context.Context, arguments string) str
 	completion, err := s.OpenAICli.Chat.Completions.New(ctx, params)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to get completion")
+	}
+
+	apiDir := path.Join(os.Getenv("PROJECT_ROOT"), "pkg", "api", "doc")
+	if err := os.MkdirAll(apiDir, 0755); err != nil {
+		return fmt.Sprintf("Failed to create directory")
+	}
+
+	fh, err := os.Create(path.Join(apiDir, "openapi.yaml"))
+	if err != nil {
+		return fmt.Sprintf("Failed to create openapi spec file")
+	}
+
+	_, err = fh.WriteString(completion.Choices[0].Message.Content)
+	if err != nil {
+		return fmt.Sprintf("Failed to write openapi spec file")
 	}
 
 	return completion.Choices[0].Message.Content
