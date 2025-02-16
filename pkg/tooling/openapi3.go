@@ -80,15 +80,16 @@ func (s *Service) GenerateOpenAPISpec(ctx context.Context, arguments string) str
 		log.Fatal().Err(err).Msg("Failed to get completion")
 	}
 
-	apiDir := path.Join(os.Getenv("PROJECT_ROOT"), "pkg", "api", "doc")
-	if err := os.MkdirAll(apiDir, 0755); err != nil {
-		return fmt.Sprintf("Failed to create directory")
+	if err := createBoilerPlate(); err != nil {
+		return fmt.Sprintf("Failed to create boilerplate: %v", err)
 	}
 
+	apiDir := path.Join(os.Getenv("PROJECT_ROOT"), "pkg", "api", "doc")
 	fh, err := os.Create(path.Join(apiDir, "openapi.yaml"))
 	if err != nil {
 		return fmt.Sprintf("Failed to create openapi spec file")
 	}
+	defer fh.Close()
 
 	_, err = fh.WriteString(completion.Choices[0].Message.Content)
 	if err != nil {

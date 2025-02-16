@@ -22,6 +22,7 @@ workflow is as follow:
 2. Generate an OpenAPI 3.0 yaml specification.
 3. Generate PostgreSQL schema for the OpenAPI spec.
 4. Store generated schema in the database.
+5. Generate Go code implementing handlers.
 `
 )
 
@@ -36,7 +37,7 @@ func main() {
 	defer cancel()
 
 	conn := fmt.Sprintf("host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
-		os.Getenv("PGHOST"), os.Getenv("PGPORT"), os.Getenv("PGDATABASE"), os.Getenv("PGUSER"), os.Getenv("PGPASSWORD"), os.Getenv("PGSSL"))
+		os.Getenv("PGHOST"), os.Getenv("PGPORT"), os.Getenv("PGDATABASE"), os.Getenv("PGUSER"), os.Getenv("PGPASSWORD"), os.Getenv("PGSSLMODE"))
 
 	db, err := sqlx.ConnectContext(ctx, "postgres", conn)
 	if err != nil {
@@ -73,7 +74,7 @@ func main() {
 			ts.GenerateOpenAPISpecTool(),
 			ts.GenerateSchemaTool(),
 			ts.StoreSchemaTool(),
-			ts.GenerateAndStoreHandlersCodeTool(),
+			ts.GenerateHandlersCodeTool(),
 		}),
 		Model: openai.F(openai.ChatModelGPT4o),
 	}
@@ -134,8 +135,8 @@ func main() {
 				resp := ts.StoreSchema(ctx, toolCall.Function.Arguments)
 				log.Debug().Msgf("Adding tool message to context: %s", toolCall.ID)
 				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
-			case tooling.GenerateAndStoreHandlersCodeToolName:
-				resp := ts.GenerateAndStoreHandlersCode(ctx, toolCall.Function.Arguments)
+			case tooling.GenerateHandlersCodeToolName:
+				resp := ts.GenerateHandlersCode(ctx)
 				log.Debug().Msgf("Adding tool message to context: %s", toolCall.ID)
 				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
 			}

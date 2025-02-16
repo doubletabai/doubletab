@@ -30,7 +30,7 @@ export PATH=$PATH:$(go env GOPATH)/bin
 Change to an empty directory where you want to create your project and run the following command:
 
 ```bash
-PGHOST=<host> PGPORT=<port> PGDB=<db_name> PGUSER=<user> PGPASS=<secret> PGSSL=disable OPENAI_API_KEY=<secret> doubletab
+PGHOST=<host> PGPORT=<port> PGDATABASE=<db_name> PGUSER=<user> PGPASSWORD=<secret> PGSSLMODE=disable OPENAI_API_KEY=<secret> doubletab
 ```
 
 Make sure that you have a PostgreSQL database running and the necessary environment variables set. The `OPENAI_API_KEY` environment variable is required to use the OpenAI API for natural language processing. DoubleTab will guide you through the process of creating your project from the database schema to the API endpoints. Just describe what kind of project/application you want to create, and DoubleTab will try to come up with right solutions.
