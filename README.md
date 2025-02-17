@@ -6,12 +6,14 @@ DoubleTab is an open-source AI-powered development tool that helps users create 
 
 ## Features
 
-- [x] Schema Generation – Define your database schema with natural language input.
-- [x] API Generation – Automatically generate structured API endpoints for your schema.
+- [x] OpenAPI 3.0 Spec - Generate OpenAPI spec based on your input in natural language.
+- [x] Schema Generation – Postgres schema generated and applied based on OpenAPI spec.
+- [x] API Generation – Automatically generate structured API endpoints.
+- [x] Building - Make sure that the generated code is buildable. If not, fix it automatically.
 
 ## Installation
 
-To install DoubleTab, you need to have Go installed on your machine. If you don't have Go installed, you can download it from the [official website](https://golang.org/dl/).
+To install and use DoubleTab, you need to have Go installed on your machine. You can download it from the [official website](https://golang.org/dl/).
 
 Once you have Go installed, you can install DoubleTab by running the following command:
 
