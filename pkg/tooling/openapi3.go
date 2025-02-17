@@ -73,6 +73,7 @@ func (s *Service) GenerateOpenAPISpec(ctx context.Context, arguments string) str
 			openai.UserMessage(userInput),
 		}),
 		Model: openai.F(openai.ChatModelGPT4o),
+		Seed:  openai.F(int64(0)),
 	}
 
 	completion, err := s.OpenAICli.Chat.Completions.New(ctx, params)
@@ -84,8 +85,8 @@ func (s *Service) GenerateOpenAPISpec(ctx context.Context, arguments string) str
 		return fmt.Sprintf("Failed to create boilerplate: %v", err)
 	}
 
-	apiDir := path.Join(os.Getenv("PROJECT_ROOT"), "pkg", "api", "doc")
-	fh, err := os.Create(path.Join(apiDir, "openapi.yaml"))
+	docDir := path.Join(os.Getenv("PROJECT_ROOT"), "pkg", "api", "doc")
+	fh, err := os.Create(path.Join(docDir, "openapi.yaml"))
 	if err != nil {
 		return fmt.Sprintf("Failed to create openapi spec file")
 	}

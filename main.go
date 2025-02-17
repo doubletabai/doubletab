@@ -23,6 +23,10 @@ workflow is as follow:
 3. Generate PostgreSQL schema for the OpenAPI spec.
 4. Store generated schema in the database.
 5. Generate Go code implementing handlers.
+6. Generate Go code implementing service.
+
+When the code is generated, try building it. If it fails, re-generate the service code providing the error context to
+the tool. Make sure to provide exact error from build step to the service code generation tool.
 `
 )
 
@@ -56,12 +60,12 @@ func main() {
 	pterm.DefaultBasicText.Println("Welcome to the" + pterm.LightMagenta(" DoubleTab ") + "AI assistant for backend development! What would you like to build today?")
 	question := os.Getenv("INITIAL_QUERY")
 	if question != "" {
-		fmt.Printf("> %s\n", question)
+		question, err = pterm.DefaultInteractiveTextInput.WithDefaultText(">").WithDelimiter(" ").WithDefaultValue(question).Show()
 	} else {
 		question, err = pterm.DefaultInteractiveTextInput.WithDefaultText(">").WithDelimiter(" ").Show()
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to get user input")
-		}
+	}
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to get user input")
 	}
 
 	params := openai.ChatCompletionNewParams{
@@ -75,8 +79,11 @@ func main() {
 			ts.GenerateSchemaTool(),
 			ts.StoreSchemaTool(),
 			ts.GenerateHandlersCodeTool(),
+			ts.GenerateServiceCodeTool(),
+			ts.BuildCodeTool(),
 		}),
 		Model: openai.F(openai.ChatModelGPT4o),
+		Seed:  openai.F(int64(0)),
 	}
 
 	for {
@@ -118,28 +125,24 @@ func main() {
 		log.Debug().Msgf("Adding message to context from %s with tools? %t", acc.Choices[0].Message.Role, len(acc.Choices[0].Message.ToolCalls) > 0)
 		params.Messages.Value = append(params.Messages.Value, acc.Choices[0].Message)
 		for _, toolCall := range toolCalls {
+			var resp string
 			switch toolCall.Function.Name {
 			case tooling.GenerateOpenAPISpecToolName:
-				resp := ts.GenerateOpenAPISpec(ctx, toolCall.Function.Arguments)
-				log.Debug().Msgf("Adding tool message to context: %s", toolCall.ID)
-				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
+				resp = ts.GenerateOpenAPISpec(ctx, toolCall.Function.Arguments)
 			case tooling.ListTablesToolName:
-				resp := ts.ListTables(ctx)
-				log.Debug().Msgf("Adding tool message to context: %s", toolCall.ID)
-				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
+				resp = ts.ListTables(ctx)
 			case tooling.GenerateSchemaToolName:
-				resp := ts.GenerateSchema(ctx, toolCall.Function.Arguments)
-				log.Debug().Msgf("Adding tool message to context: %s", toolCall.ID)
-				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
+				resp = ts.GenerateSchema(ctx, toolCall.Function.Arguments)
 			case tooling.StoreSchemaToolName:
-				resp := ts.StoreSchema(ctx, toolCall.Function.Arguments)
-				log.Debug().Msgf("Adding tool message to context: %s", toolCall.ID)
-				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
+				resp = ts.StoreSchema(ctx, toolCall.Function.Arguments)
 			case tooling.GenerateHandlersCodeToolName:
-				resp := ts.GenerateHandlersCode(ctx)
-				log.Debug().Msgf("Adding tool message to context: %s", toolCall.ID)
-				params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
+				resp = ts.GenerateHandlersCode(ctx)
+			case tooling.GenerateServiceCodeToolName:
+				resp = ts.GenerateServiceCode(ctx, toolCall.Function.Arguments)
+			case tooling.BuildCodeToolName:
+				resp = ts.BuildCode(ctx)
 			}
+			params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
 		}
 		stream.Close()
 	}

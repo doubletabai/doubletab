@@ -31,7 +31,9 @@ follow this format:
 - Prefer TEXT over VARCHAR.
 - Set NOT NULL for required fields.
 - Use UNIQUE constraints when necessary.
-- Do NOT include CREATE TABLE statements, only structured JSON output.`
+- Do NOT include CREATE TABLE statements, only structured JSON output.
+- Do NOT add any additional fields that are not present in the OpenAPI spec (e.g., created_at, updated_at).
+`
 )
 
 const ListTablesToolName = "list_tables"
@@ -116,6 +118,7 @@ func (s *Service) GenerateSchema(ctx context.Context, arguments string) string {
 			openai.UserMessage(openAPISpec),
 		}),
 		Model: openai.F(openai.ChatModelGPT4o),
+		Seed:  openai.F(int64(0)),
 	}
 
 	completion, err := s.OpenAICli.Chat.Completions.New(ctx, params)
