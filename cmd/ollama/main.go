@@ -78,7 +78,7 @@ func main() {
 				result := addNumbers(tool.Function.Arguments["a"].(float64), tool.Function.Arguments["b"].(float64))
 				messages = append(messages, api.Message{
 					Role:    "tool",
-					Content: fmt.Sprintf("The result is %d", result),
+					Content: fmt.Sprintf("The result is %f", result),
 				})
 			}
 		}

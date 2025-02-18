@@ -117,8 +117,8 @@ func (s *Service) GenerateSchema(ctx context.Context, arguments string) string {
 			openai.SystemMessage(generateSchemaPrompt),
 			openai.UserMessage(openAPISpec),
 		}),
-		Model: openai.F(openai.ChatModelGPT4o),
-		Seed:  openai.F(int64(0)),
+		Model: openai.F(openai.ChatModelGPT4oMini),
+		Seed:  openai.Int(1),
 	}
 
 	completion, err := s.OpenAICli.Chat.Completions.New(ctx, params)

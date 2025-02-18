@@ -9,6 +9,7 @@ import (
 
 	"github.com/openai/openai-go"
 	"github.com/pterm/pterm"
+	"github.com/rs/zerolog/log"
 )
 
 const BuildCodeToolName = "build_code"
@@ -36,6 +37,7 @@ func (s *Service) BuildCode(ctx context.Context) string {
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		log.Warn().Err(err).Msgf("go build failed: %s", output)
 		return fmt.Sprintf("go build failed: %v\n%s", err, output)
 	}
 

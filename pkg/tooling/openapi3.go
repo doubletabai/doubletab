@@ -72,8 +72,8 @@ func (s *Service) GenerateOpenAPISpec(ctx context.Context, arguments string) str
 			openai.SystemMessage(generateOpenAPISpecPrompt),
 			openai.UserMessage(userInput),
 		}),
-		Model: openai.F(openai.ChatModelGPT4o),
-		Seed:  openai.F(int64(0)),
+		Model: openai.F(openai.ChatModelGPT4oMini),
+		Seed:  openai.Int(1),
 	}
 
 	completion, err := s.OpenAICli.Chat.Completions.New(ctx, params)
@@ -88,13 +88,13 @@ func (s *Service) GenerateOpenAPISpec(ctx context.Context, arguments string) str
 	docDir := path.Join(os.Getenv("PROJECT_ROOT"), "pkg", "api", "doc")
 	fh, err := os.Create(path.Join(docDir, "openapi.yaml"))
 	if err != nil {
-		return fmt.Sprintf("Failed to create openapi spec file")
+		return fmt.Sprintf("Failed to create openapi spec file: %v", err)
 	}
 	defer fh.Close()
 
 	_, err = fh.WriteString(completion.Choices[0].Message.Content)
 	if err != nil {
-		return fmt.Sprintf("Failed to write openapi spec file")
+		return fmt.Sprintf("Failed to write openapi spec file: %v", err)
 	}
 
 	return completion.Choices[0].Message.Content

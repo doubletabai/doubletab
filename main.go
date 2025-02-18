@@ -12,12 +12,15 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/doubletabai/doubletab/pkg/knowledgebase"
 	"github.com/doubletabai/doubletab/pkg/tooling"
+	"github.com/doubletabai/doubletab/pkg/vector"
 )
 
 const (
 	mainWorkflowPrompt = `You are an AI assistant that helps developers build backend applications step by step. Your
 workflow is as follow:
+
 1. Agree with user on the entities and fields.
 2. Generate an OpenAPI 3.0 yaml specification.
 3. Generate PostgreSQL schema for the OpenAPI spec.
@@ -27,8 +30,12 @@ workflow is as follow:
 
 When the code is generated, try building it. If it fails, re-generate the service code providing the error context to
 the tool. Make sure to provide exact error from build step to the service code generation tool.
+
+When user asks for something that doesn't fit the workflow, consult the knowledge base or ask clarifying questions.
 `
 )
+
+const defaultKnowledgeBaseTable = "knowledge_base"
 
 func main() {
 	lvl, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
@@ -51,7 +58,20 @@ func main() {
 
 	openAICli := openai.NewClient()
 
-	ts, err := tooling.New(db, openAICli)
+	knowDB, err := vector.New(ctx, defaultKnowledgeBaseTable, openAICli)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize knowledge base")
+	}
+	defer knowDB.Close()
+
+	if err := knowDB.Truncate(ctx); err != nil {
+		log.Fatal().Err(err).Msg("Failed to truncate knowledge base")
+	}
+	if err := knowledgebase.Populate(ctx, knowDB); err != nil {
+		log.Fatal().Err(err).Msg("Failed to populate knowledge base")
+	}
+
+	ts, err := tooling.New(db, knowDB, openAICli)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize tooling service")
 	}
@@ -81,9 +101,10 @@ func main() {
 			ts.GenerateHandlersCodeTool(),
 			ts.GenerateServiceCodeTool(),
 			ts.BuildCodeTool(),
+			ts.QueryKnowledgeBaseTool(),
 		}),
-		Model: openai.F(openai.ChatModelGPT4o),
-		Seed:  openai.F(int64(0)),
+		Model: openai.F(openai.ChatModelGPT4oMini),
+		Seed:  openai.Int(1),
 	}
 
 	for {
@@ -141,6 +162,8 @@ func main() {
 				resp = ts.GenerateServiceCode(ctx, toolCall.Function.Arguments)
 			case tooling.BuildCodeToolName:
 				resp = ts.BuildCode(ctx)
+			case tooling.QueryKnowledgeBaseToolName:
+				resp = ts.QueryKnowledgeBase(ctx, toolCall.Function.Arguments)
 			}
 			params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
 		}

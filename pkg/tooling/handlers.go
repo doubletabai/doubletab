@@ -39,7 +39,8 @@ The ServerInterface interface was generated as follows:
 Important notes:
 - Implement the methods only, do not create any extra types. Assume that types defined in the OpenAPI spec are already
   available.
-- Return only valid Go code in raw format (without go code block markdown syntax).
+- Return only valid Go code in raw format (without go code block markdown syntax) and without any other comments (like
+  "I did this and that").
 `
 )
 
@@ -154,8 +155,8 @@ func (s *Service) GenerateServiceCode(ctx context.Context, arguments string) str
 			openai.SystemMessage(prompt),
 			openai.UserMessage(userInput),
 		}),
-		Model: openai.F(openai.ChatModelGPT4o),
-		Seed:  openai.F(int64(0)),
+		Model: openai.F(openai.ChatModelGPT4oMini),
+		Seed:  openai.Int(1),
 	}
 
 	completion, err := s.OpenAICli.Chat.Completions.New(ctx, params)
@@ -166,16 +167,26 @@ func (s *Service) GenerateServiceCode(ctx context.Context, arguments string) str
 	apiDir := path.Join(os.Getenv("PROJECT_ROOT"), "pkg", "api")
 	fh, err := os.Create(path.Join(apiDir, "service.go"))
 	if err != nil {
-		return fmt.Sprintf("Failed to create service.go file")
+		return fmt.Sprintf("Failed to create service.go file: %v", err)
 	}
 	defer fh.Close()
 
-	_, err = fh.WriteString(completion.Choices[0].Message.Content)
-	if err != nil {
-		return fmt.Sprintf("Failed to write service.go file")
+	var rawCode string
+	parts := strings.Split(completion.Choices[0].Message.Content, "```go")
+	if len(parts) == 2 {
+		rawCode = parts[1]
+		parts = strings.Split(rawCode, "```")
+		rawCode = parts[0]
+	} else {
+		rawCode = completion.Choices[0].Message.Content
 	}
 
-	return completion.Choices[0].Message.Content
+	_, err = fh.WriteString(rawCode)
+	if err != nil {
+		return fmt.Sprintf("Failed to write service.go file: %v", err)
+	}
+
+	return rawCode
 }
 
 // Scan a Go file and extract methods from `ServerInterface`
