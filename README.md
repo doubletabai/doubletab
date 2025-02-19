@@ -1,6 +1,6 @@
 # DoubleTab
 
-DoubleTab is an open-source AI-powered development tool that helps users create software projects from scratch to production. Designed for developers, but accessible to anyone, it automates essential backend tasks such as database schema generation, API endpoint creation, and code generation—streamlining the development workflow.
+[DoubleTab](https://www.doubletab.ai) is an open-source AI-powered development tool that helps users create software projects from scratch to production. Designed for developers, but accessible to anyone, it automates essential backend tasks such as database schema generation, API endpoint creation, and code generation—streamlining the development workflow.
 
 ![screenshot.png](screenshot.png)
 
@@ -39,10 +39,11 @@ Make sure that you have a PostgreSQL database running and the necessary environm
 
 ## Roadmap
 
+- [ ] Standardized Codebase – Ensures consistency by following predefined coding patterns.
+- [ ] Code Execution – Run and validate generated Go code securely.
+- [ ] Memory - Remember user inputs and tools outputs to avoid endless loops of incorrect solutions.
 - [ ] Ollama Integration – Integrate Ollama for local LLMs.
 - [ ] Different DBs/languages – Support for different databases and programming languages.
-- [ ] Code Execution – Run and validate generated Go code securely.
-- [ ] Standardized Codebase – Ensures consistency by following predefined coding patterns.
 - [ ] Tests Generation – Automatically generate and run tests for the generated code.
 - [ ] Extensible Tools – Supports custom tools for additional automation.
 - [ ] Custom Knowledge Base – Create and apply custom knowledge bases for specific domains.
