@@ -28,14 +28,14 @@ workflow is as follow:
 5. Generate Go code implementing handlers.
 6. Generate Go code implementing service.
 
-When the code is generated, try building it. If it fails, re-generate the service code providing the error context to
-the tool. Make sure to provide exact error from build step to the service code generation tool.
+Confirm each step with the user before proceeding to the next one.
+
+When the service code is generated, try building it. If it fails, re-generate the service code providing the error
+context to the tool. Make sure to provide exact error from build step to the service code generation tool.
 
 When user asks for something that doesn't fit the workflow, consult the knowledge base or ask clarifying questions.
 `
 )
-
-const defaultKnowledgeBaseTable = "knowledge_base"
 
 func main() {
 	lvl, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
@@ -58,20 +58,22 @@ func main() {
 
 	openAICli := openai.NewClient()
 
-	knowDB, err := vector.New(ctx, defaultKnowledgeBaseTable, openAICli)
+	vs, err := vector.New(ctx, openAICli)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to initialize knowledge base")
+		log.Fatal().Err(err).Msg("Failed to initialize vector service")
 	}
-	defer knowDB.Close()
+	defer vs.Close()
 
-	if err := knowDB.Truncate(ctx); err != nil {
-		log.Fatal().Err(err).Msg("Failed to truncate knowledge base")
+	ks, err := vector.NewKnowledge(ctx, vs)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize knowledge service")
 	}
-	if err := knowledgebase.Populate(ctx, knowDB); err != nil {
+
+	if err := knowledgebase.Populate(ctx, ks); err != nil {
 		log.Fatal().Err(err).Msg("Failed to populate knowledge base")
 	}
 
-	ts, err := tooling.New(db, knowDB, openAICli)
+	ts, err := tooling.New(db, ks, openAICli)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize tooling service")
 	}
@@ -129,9 +131,6 @@ func main() {
 		}
 
 		toolCalls := acc.Choices[0].Message.ToolCalls
-		log.Debug().Msgf("Tool calls: %v", toolCalls)
-		log.Debug().Msgf("Finish reason: %s", acc.Choices[0].FinishReason)
-
 		if len(toolCalls) == 0 && acc.Choices[0].FinishReason == "stop" {
 			params.Messages.Value = append(params.Messages.Value, acc.Choices[0].Message)
 			nextStep, err := pterm.DefaultInteractiveTextInput.WithDefaultText(">").WithDelimiter(" ").Show()
@@ -165,6 +164,7 @@ func main() {
 			case tooling.QueryKnowledgeBaseToolName:
 				resp = ts.QueryKnowledgeBase(ctx, toolCall.Function.Arguments)
 			}
+			log.Debug().Msgf("Adding message to context from tool %s, resp: %s", toolCall.ID, resp)
 			params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
 		}
 		stream.Close()

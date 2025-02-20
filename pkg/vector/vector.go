@@ -8,13 +8,11 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/shared"
-	"github.com/pgvector/pgvector-go"
 	"github.com/rs/zerolog/log"
 )
 
 type Service struct {
 	DB        *sqlx.DB
-	Table     string
 	OpenAICli *openai.Client
 }
 
@@ -57,7 +55,7 @@ func EnvConfig() *Config {
 	return cfg
 }
 
-func New(ctx context.Context, table string, cli *openai.Client) (*Service, error) {
+func New(ctx context.Context, cli *openai.Client) (*Service, error) {
 	cfg := EnvConfig()
 	conn := fmt.Sprintf("host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
 		cfg.Host, cfg.Port, cfg.Database, cfg.User, cfg.Password, cfg.SSLMode)
@@ -72,14 +70,8 @@ func New(ctx context.Context, table string, cli *openai.Client) (*Service, error
 		return nil, fmt.Errorf("failed to create embeddings table: %w", err)
 	}
 
-	_, err = db.Exec(fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id SERIAL PRIMARY KEY, text TEXT, embedding VECTOR(1536))", table))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create %s table: %w", table, err)
-	}
-
 	return &Service{
 		DB:        db,
-		Table:     table,
 		OpenAICli: cli,
 	}, nil
 }
@@ -98,37 +90,4 @@ func (s *Service) GenerateEmbeddings(ctx context.Context, text string) ([]float6
 		return nil, err
 	}
 	return resp.Data[0].Embedding, nil
-}
-
-func (s *Service) StoreEmbedding(ctx context.Context, text string, embedding []float64) error {
-	embs32 := make([]float32, len(embedding))
-	for i, v := range embedding {
-		embs32[i] = float32(v)
-	}
-	_, err := s.DB.ExecContext(ctx,
-		fmt.Sprintf("INSERT INTO %s (text, embedding) VALUES ($1, $2)", s.Table), text, pgvector.NewVector(embs32))
-	return err
-}
-
-func (s *Service) Query(ctx context.Context, input string) ([]string, error) {
-	embedding, err := s.GenerateEmbeddings(ctx, input)
-	if err != nil {
-		return nil, err
-	}
-	embs32 := make([]float32, len(embedding))
-	for i, v := range embedding {
-		embs32[i] = float32(v)
-	}
-
-	var rows []string
-	err = s.DB.SelectContext(ctx, &rows, fmt.Sprintf("SELECT text FROM %s ORDER BY embedding <-> $1 LIMIT 1", s.Table), pgvector.NewVector(embs32))
-	if err != nil {
-		return nil, err
-	}
-	return rows, nil
-}
-
-func (s *Service) Truncate(ctx context.Context) error {
-	_, err := s.DB.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s", s.Table))
-	return err
 }

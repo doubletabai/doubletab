@@ -42,7 +42,7 @@ func (s *Service) QueryKnowledgeBase(ctx context.Context, arguments string) stri
 	}
 	userInput := args["user_input"].(string)
 
-	resp, err := s.KnowDB.Query(ctx, userInput)
+	resp, err := s.KS.Query(ctx, userInput)
 	if err != nil {
 		log.Warn().Str("user_input", userInput).Err(err).Msg("Failed to query knowledge base")
 		return fmt.Sprintf("Failed to query knowledge base: %v", err)

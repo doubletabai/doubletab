@@ -30,6 +30,7 @@ The API should:
 - Use JSON request/response bodies.
 - Follow OpenAPI 3.0 syntax.
 - Include proper request/response models.
+- Avoid duplicating models just for Create/Update requests (eg. when some field like ID is not needed).
 
 Return only valid OpenAPI YAML in raw format (without yaml code block markdown syntax).
 `

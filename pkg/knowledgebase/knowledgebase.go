@@ -14,13 +14,8 @@ https://github.com/doubletabai/doubletab/discussions/categories/ideas.
 `
 )
 
-func Populate(ctx context.Context, db *vector.Service) error {
-	embds, err := db.GenerateEmbeddings(ctx, sampleOtherDB)
-	if err != nil {
-		return err
-	}
-
-	if err := db.StoreEmbedding(ctx, sampleOtherDB, embds); err != nil {
+func Populate(ctx context.Context, db *vector.KnowledgeService) error {
+	if err := db.Store(ctx, sampleOtherDB); err != nil {
 		return err
 	}
 
