@@ -13,11 +13,12 @@ import (
 type Service struct {
 	DB        *sqlx.DB
 	KS        *vector.KnowledgeService
+	Mem       *vector.MemoryService
 	OpenAICli *openai.Client
 	TmpDir    string
 }
 
-func New(db *sqlx.DB, ks *vector.KnowledgeService, cli *openai.Client) (*Service, error) {
+func New(db *sqlx.DB, ks *vector.KnowledgeService, mem *vector.MemoryService, cli *openai.Client) (*Service, error) {
 	tmpDir, err := os.MkdirTemp("", "doubletab-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary directory: %w", err)
@@ -25,6 +26,7 @@ func New(db *sqlx.DB, ks *vector.KnowledgeService, cli *openai.Client) (*Service
 	return &Service{
 		DB:        db,
 		KS:        ks,
+		Mem:       mem,
 		OpenAICli: cli,
 		TmpDir:    tmpDir,
 	}, nil

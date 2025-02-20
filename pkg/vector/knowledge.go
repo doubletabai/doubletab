@@ -23,25 +23,25 @@ func NewKnowledge(ctx context.Context, v *Service) (*KnowledgeService, error) {
 	return s, nil
 }
 
-func (s *KnowledgeService) Store(ctx context.Context, text string) error {
-	embedding, err := s.V.GenerateEmbeddings(ctx, text)
+func (s *KnowledgeService) Store(ctx context.Context, content string) error {
+	embedding, err := s.V.GenerateEmbeddings(ctx, content)
 	if err != nil {
 		return err
 	}
-	return s.StoreEmbedding(ctx, text, embedding)
+	return s.StoreEmbedding(ctx, content, embedding)
 }
 
-func (s *KnowledgeService) StoreEmbedding(ctx context.Context, text string, embedding []float64) error {
+func (s *KnowledgeService) StoreEmbedding(ctx context.Context, content string, embedding []float64) error {
 	embs32 := make([]float32, len(embedding))
 	for i, v := range embedding {
 		embs32[i] = float32(v)
 	}
-	_, err := s.V.DB.ExecContext(ctx, storeKnowledgeSQL, text, pgvector.NewVector(embs32))
+	_, err := s.V.DB.ExecContext(ctx, storeKnowledgeSQL, content, pgvector.NewVector(embs32))
 	return err
 }
 
-func (s *KnowledgeService) Query(ctx context.Context, input string) ([]string, error) {
-	embedding, err := s.V.GenerateEmbeddings(ctx, input)
+func (s *KnowledgeService) Query(ctx context.Context, query string) ([]string, error) {
+	embedding, err := s.V.GenerateEmbeddings(ctx, query)
 	if err != nil {
 		return nil, err
 	}

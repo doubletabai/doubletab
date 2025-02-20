@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/openai/openai-go"
@@ -68,12 +71,18 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize knowledge service")
 	}
-
 	if err := knowledgebase.Populate(ctx, ks); err != nil {
 		log.Fatal().Err(err).Msg("Failed to populate knowledge base")
 	}
 
-	ts, err := tooling.New(db, ks, openAICli)
+	sid := uuid.NewString()
+
+	mem, err := vector.NewMemory(ctx, vs, sid)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize memory service")
+	}
+
+	ts, err := tooling.New(db, ks, mem, openAICli)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize tooling service")
 	}
@@ -82,14 +91,40 @@ func main() {
 	pterm.DefaultBasicText.Println("Welcome to the" + pterm.LightMagenta(" DoubleTab ") + "AI assistant for backend development! What would you like to build today?")
 	question := os.Getenv("INITIAL_QUERY")
 	if question != "" {
-		question, err = pterm.DefaultInteractiveTextInput.WithDefaultText(">").WithDelimiter(" ").WithDefaultValue(question).Show()
+		question, err = pterm.DefaultInteractiveTextInput.
+			WithDefaultText(">").
+			WithDelimiter(" ").
+			WithOnInterruptFunc(exitFunc(sid)).
+			WithDefaultValue(question).
+			Show()
 	} else {
-		question, err = pterm.DefaultInteractiveTextInput.WithDefaultText(">").WithDelimiter(" ").Show()
+		question, err = pterm.DefaultInteractiveTextInput.
+			WithDefaultText(">").
+			WithDelimiter(" ").
+			WithOnInterruptFunc(exitFunc(sid)).
+			Show()
 	}
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to get user input")
 	}
 
+	go runMainWorkflow(ctx, sid, question, ts, openAICli)
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
+	<-sigs
+
+	pterm.DefaultBasicText.Printf("Closing session %s\n", sid)
+}
+
+func exitFunc(sid string) func() {
+	return func() {
+		pterm.DefaultBasicText.Printf("Closing session %s\n", sid)
+		os.Exit(1)
+	}
+}
+
+func runMainWorkflow(ctx context.Context, sid, question string, ts *tooling.Service, openAICli *openai.Client) {
 	params := openai.ChatCompletionNewParams{
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage(mainWorkflowPrompt),
@@ -109,12 +144,26 @@ func main() {
 		Seed:  openai.Int(1),
 	}
 
+	if err := ts.Mem.Store(ctx, vector.RoleSystem, mainWorkflowPrompt); err != nil {
+		log.Fatal().Err(err).Msg("Failed to store system message")
+	}
+	if err := ts.Mem.Store(ctx, vector.RoleUser, question); err != nil {
+		log.Fatal().Err(err).Msg("Failed to store user message")
+	}
+
 	for {
+		if ctx.Err() != nil {
+			return
+		}
 		stream := openAICli.Chat.Completions.NewStreaming(ctx, params)
 		acc := openai.ChatCompletionAccumulator{}
 
 		begin := false
 		for stream.Next() {
+			if ctx.Err() != nil {
+				stream.Close()
+				return
+			}
 			chunk := stream.Current()
 			acc.AddChunk(chunk)
 			if !begin && chunk.Choices[0].Delta.Content != "" {
@@ -132,10 +181,20 @@ func main() {
 
 		toolCalls := acc.Choices[0].Message.ToolCalls
 		if len(toolCalls) == 0 && acc.Choices[0].FinishReason == "stop" {
+			if err := ts.Mem.Store(ctx, vector.RoleAssistant, acc.Choices[0].Message.Content); err != nil {
+				log.Err(err).Msg("Failed to store assistant message")
+			}
 			params.Messages.Value = append(params.Messages.Value, acc.Choices[0].Message)
-			nextStep, err := pterm.DefaultInteractiveTextInput.WithDefaultText(">").WithDelimiter(" ").Show()
+			nextStep, err := pterm.DefaultInteractiveTextInput.
+				WithDefaultText(">").
+				WithDelimiter(" ").
+				WithOnInterruptFunc(exitFunc(sid)).
+				Show()
 			if err != nil {
 				log.Fatal().Err(err).Msg("Failed to get user input")
+			}
+			if err := ts.Mem.Store(ctx, vector.RoleUser, nextStep); err != nil {
+				log.Err(err).Msg("Failed to store user message")
 			}
 			params.Messages.Value = append(params.Messages.Value, openai.UserMessage(nextStep))
 			stream.Close()
@@ -145,6 +204,10 @@ func main() {
 		log.Debug().Msgf("Adding message to context from %s with tools? %t", acc.Choices[0].Message.Role, len(acc.Choices[0].Message.ToolCalls) > 0)
 		params.Messages.Value = append(params.Messages.Value, acc.Choices[0].Message)
 		for _, toolCall := range toolCalls {
+			if ctx.Err() != nil {
+				stream.Close()
+				return
+			}
 			var resp string
 			switch toolCall.Function.Name {
 			case tooling.GenerateOpenAPISpecToolName:
@@ -165,6 +228,9 @@ func main() {
 				resp = ts.QueryKnowledgeBase(ctx, toolCall.Function.Arguments)
 			}
 			log.Debug().Msgf("Adding message to context from tool %s, resp: %s", toolCall.ID, resp)
+			if err := ts.Mem.Store(ctx, vector.RoleTool, resp); err != nil {
+				log.Err(err).Msg("Failed to store tool message")
+			}
 			params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
 		}
 		stream.Close()

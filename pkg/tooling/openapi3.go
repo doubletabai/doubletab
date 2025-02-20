@@ -81,6 +81,7 @@ func (s *Service) GenerateOpenAPISpec(ctx context.Context, arguments string) str
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to get completion")
 	}
+	resp := completion.Choices[0].Message.Content
 
 	if err := createBoilerPlate(); err != nil {
 		return fmt.Sprintf("Failed to create boilerplate: %v", err)
@@ -93,10 +94,10 @@ func (s *Service) GenerateOpenAPISpec(ctx context.Context, arguments string) str
 	}
 	defer fh.Close()
 
-	_, err = fh.WriteString(completion.Choices[0].Message.Content)
+	_, err = fh.WriteString(resp)
 	if err != nil {
 		return fmt.Sprintf("Failed to write openapi spec file: %v", err)
 	}
 
-	return completion.Choices[0].Message.Content
+	return resp
 }
