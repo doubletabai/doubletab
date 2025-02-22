@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/openai/openai-go"
-	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
 )
 
@@ -33,9 +32,6 @@ func (s *Service) QueryKnowledgeBaseTool() openai.ChatCompletionToolParam {
 }
 
 func (s *Service) QueryKnowledgeBase(ctx context.Context, arguments string) string {
-	spinner, _ := pterm.DefaultSpinner.Start("Querying knowledge base...")
-	defer spinner.Stop()
-
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
 		return fmt.Sprintf("Failed to unmarshal function arguments: %v", err)

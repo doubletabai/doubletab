@@ -58,7 +58,7 @@ func main() {
 	defer db.Close()
 	db.Mapper = reflectx.NewMapperFunc("json", strcase.ToSnake)
 
-	srv := api.Service{DB: db}
+	srv := api.Server{DB: db}
 	h := api.Handler(srv)
 	log.Printf("Server listening on port 8181")
 	log.Fatal(http.ListenAndServe(":8181", h))

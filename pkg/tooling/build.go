@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 
 	"github.com/openai/openai-go"
-	"github.com/pterm/pterm"
-	"github.com/rs/zerolog/log"
 )
 
 const BuildCodeToolName = "build_code"
@@ -25,9 +23,6 @@ func (s *Service) BuildCodeTool() openai.ChatCompletionToolParam {
 }
 
 func (s *Service) BuildCode(ctx context.Context) string {
-	spinner, _ := pterm.DefaultSpinner.Start("Building code...")
-	defer spinner.Stop()
-
 	absRoot, err := filepath.Abs(os.Getenv("PROJECT_ROOT"))
 	if err != nil {
 		return fmt.Sprintf("Failed to get absolute path of project root: %v", err)
@@ -37,7 +32,6 @@ func (s *Service) BuildCode(ctx context.Context) string {
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Warn().Err(err).Msgf("go build failed: %s", output)
 		return fmt.Sprintf("go build failed: %v\n%s", err, output)
 	}
 

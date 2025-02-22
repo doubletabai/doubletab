@@ -29,12 +29,7 @@ workflow is as follow:
 3. Generate PostgreSQL schema for the OpenAPI spec.
 4. Store generated schema in the database.
 5. Generate Go code implementing handlers.
-6. Generate Go code implementing service.
-
-Confirm each step with the user before proceeding to the next one.
-
-When the service code is generated, try building it. If it fails, re-generate the service code providing the error
-context to the tool. Make sure to provide exact error from build step to the service code generation tool.
+6. Generate Go code implementing server.
 
 When user asks for something that doesn't fit the workflow, consult the knowledge base or ask clarifying questions.
 `
@@ -136,8 +131,7 @@ func runMainWorkflow(ctx context.Context, sid, question string, ts *tooling.Serv
 			ts.GenerateSchemaTool(),
 			ts.StoreSchemaTool(),
 			ts.GenerateHandlersCodeTool(),
-			ts.GenerateServiceCodeTool(),
-			ts.BuildCodeTool(),
+			ts.GenerateServerCodeTool(),
 			ts.QueryKnowledgeBaseTool(),
 		}),
 		Model: openai.F(openai.ChatModelGPT4oMini),
@@ -201,7 +195,6 @@ func runMainWorkflow(ctx context.Context, sid, question string, ts *tooling.Serv
 			continue
 		}
 
-		log.Debug().Msgf("Adding message to context from %s with tools? %t", acc.Choices[0].Message.Role, len(acc.Choices[0].Message.ToolCalls) > 0)
 		params.Messages.Value = append(params.Messages.Value, acc.Choices[0].Message)
 		for _, toolCall := range toolCalls {
 			if ctx.Err() != nil {
@@ -220,10 +213,8 @@ func runMainWorkflow(ctx context.Context, sid, question string, ts *tooling.Serv
 				resp = ts.StoreSchema(ctx, toolCall.Function.Arguments)
 			case tooling.GenerateHandlersCodeToolName:
 				resp = ts.GenerateHandlersCode(ctx)
-			case tooling.GenerateServiceCodeToolName:
-				resp = ts.GenerateServiceCode(ctx, toolCall.Function.Arguments)
-			case tooling.BuildCodeToolName:
-				resp = ts.BuildCode(ctx)
+			case tooling.GenerateServerCodeToolName:
+				resp = ts.GenerateServerCode(ctx, toolCall.Function.Arguments)
 			case tooling.QueryKnowledgeBaseToolName:
 				resp = ts.QueryKnowledgeBase(ctx, toolCall.Function.Arguments)
 			}
