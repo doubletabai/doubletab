@@ -3,66 +3,29 @@ package vector
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/shared"
 	"github.com/rs/zerolog/log"
+
+	"github.com/doubletabai/doubletab/pkg/config"
 )
 
 type Service struct {
-	DB        *sqlx.DB
-	OpenAICli *openai.Client
+	DB         *sqlx.DB
+	OpenAICli  *openai.Client
+	Model      string
+	Dimensions int64
 }
 
-type Config struct {
-	Host     string
-	Port     string
-	Database string
-	User     string
-	Password string
-	SSLMode  string
-}
-
-func EnvConfig() *Config {
-	cfg := &Config{
-		Host:     os.Getenv("DT_PGHOST"),
-		Port:     os.Getenv("DT_PGPORT"),
-		Database: os.Getenv("DT_PGDATABASE"),
-		User:     os.Getenv("DT_PGUSER"),
-		Password: os.Getenv("DT_PGPASSWORD"),
-		SSLMode:  os.Getenv("DT_PGSSLMODE"),
-	}
-	if cfg.Host == "" {
-		cfg.Host = os.Getenv("PGHOST")
-	}
-	if cfg.Port == "" {
-		cfg.Port = os.Getenv("PGPORT")
-	}
-	if cfg.Database == "" {
-		cfg.Database = os.Getenv("PGDATABASE")
-	}
-	if cfg.User == "" {
-		cfg.User = os.Getenv("PGUSER")
-	}
-	if cfg.Password == "" {
-		cfg.Password = os.Getenv("PGPASSWORD")
-	}
-	if cfg.SSLMode == "" {
-		cfg.SSLMode = os.Getenv("PGSSLMODE")
-	}
-	return cfg
-}
-
-func New(ctx context.Context, cli *openai.Client) (*Service, error) {
-	cfg := EnvConfig()
-	conn := fmt.Sprintf("host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.Database, cfg.User, cfg.Password, cfg.SSLMode)
+func New(ctx context.Context, cfg *config.Config, cli *openai.Client) (*Service, error) {
+	conn := fmt.Sprintf("host='%s' port='%d' dbname='%s' user='%s' password='%s' sslmode='%s'",
+		cfg.DTPGHost, cfg.DTPGPort, cfg.DTPGDatabase, cfg.DTPGUser, cfg.DTPGPassword, cfg.DTPGSSLMode)
 
 	db, err := sqlx.ConnectContext(ctx, "postgres", conn)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to connect to database")
+		log.Fatal().Err(err).Msg("Failed to connect to doubletab database")
 	}
 
 	_, err = db.Exec("CREATE EXTENSION IF NOT EXISTS vector")
@@ -71,8 +34,10 @@ func New(ctx context.Context, cli *openai.Client) (*Service, error) {
 	}
 
 	return &Service{
-		DB:        db,
-		OpenAICli: cli,
+		DB:         db,
+		OpenAICli:  cli,
+		Model:      cfg.LLMEmbeddingModel,
+		Dimensions: cfg.LLMEmbeddingDimensions,
 	}, nil
 }
 
@@ -83,7 +48,7 @@ func (s *Service) Close() {
 func (s *Service) GenerateEmbeddings(ctx context.Context, text string) ([]float64, error) {
 	resp, err := s.OpenAICli.Embeddings.New(ctx, openai.EmbeddingNewParams{
 		Input:          openai.F[openai.EmbeddingNewParamsInputUnion](shared.UnionString(text)),
-		Model:          openai.F(openai.EmbeddingModelTextEmbeddingAda002),
+		Model:          openai.String(s.Model),
 		EncodingFormat: openai.F(openai.EmbeddingNewParamsEncodingFormatFloat),
 	})
 	if err != nil {

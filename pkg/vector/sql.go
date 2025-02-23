@@ -5,7 +5,7 @@ const (
 CREATE TABLE IF NOT EXISTS knowledge (
 	id SERIAL PRIMARY KEY,
 	content TEXT NOT NULL,
-	embedding VECTOR(1536) NOT NULL
+	embedding VECTOR(%d) NOT NULL
 )
 `
 	storeKnowledgeSQL = `
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS memory (
 	role TEXT NOT NULL,
 	content TEXT NOT NULL,
 	created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
-	embedding VECTOR(1536) NOT NULL
+	embedding VECTOR(%d) NOT NULL
 )
 `
 	storeMemorySQL = `

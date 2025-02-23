@@ -155,7 +155,7 @@ func (s *Service) GenerateServerCode(ctx context.Context, arguments string) stri
 			s.SaveServerCodeTool(),
 			s.BuildCodeTool(),
 		}),
-		Model: openai.F(openai.ChatModelGPT4o),
+		Model: openai.String(s.CodeModel),
 		Seed:  openai.Int(1),
 	}
 

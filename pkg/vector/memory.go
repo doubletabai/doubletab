@@ -21,7 +21,7 @@ type MemoryService struct {
 }
 
 func NewMemory(ctx context.Context, v *Service, sid string) (*MemoryService, error) {
-	_, err := v.DB.ExecContext(ctx, memorySchemaSQL)
+	_, err := v.DB.ExecContext(ctx, fmt.Sprintf(memorySchemaSQL, v.Dimensions))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memory schema: %w", err)
 	}

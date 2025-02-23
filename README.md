@@ -10,6 +10,7 @@
 - [x] Schema Generation – Postgres schema generated and applied based on OpenAPI spec.
 - [x] API Generation – Automatically generate structured API endpoints.
 - [x] Building - Make sure that the generated code is buildable. If not, fix it automatically.
+- [x] Ollama Integration – Integrate Ollama for local LLMs.
 
 ## Installation
 
@@ -29,20 +30,44 @@ export PATH=$PATH:$(go env GOPATH)/bin
 
 ## Usage
 
-Change to an empty directory where you want to create your project and run the following command:
+Change to an empty directory where you want to create your project. Before running `doubletab`, make sure that it has
+configuration for the database and LLM connection. There are two ways to provide the configuration:
+
+1. Flags - You can provide the configuration using flags. Run `doubletab -h` to see the available flags. Example minimal
+   usage with OpenAI LLM:
+
+   ```bash
+   doubletab --pg-user <user> --pg-database <project_db> --pg-password <password> --dt-pg-user <user> --dt-pg-password <password> --openai-api-key <key>
+   ```
+
+   DoubleTab is using two databases: one for the project and one for the tool. The `--pg-user`, `--pg-database`, and `--pg-password` flags are used for the project database, and the `--dt-pg-user` and `--dt-pg-password` flags are used for the tool database (by default, the tool database is `doubletab`, but can be overwritten).
+
+2. Environment variables - You can provide the configuration using environment variables. Each flag has a corresponding
+    environment variable. Example:
+ 
+   ```bash
+    export PG_USER=<user>
+    export PG_DATABASE=<project_db>
+    export PG_PASSWORD=<password>
+    export DT_PG_USER=<user>
+    export DT_PG_PASSWORD=<password>
+    export OPENAI_API_KEY=<key>
+    doubletab
+    ```
+
+### Ollama Example
+
+To use local LLMs, you need to have Ollama running. Then, configure `dobuletab` with the following additional flags:
 
 ```bash
-PGHOST=<host> PGPORT=<port> PGDATABASE=<db_name> PGUSER=<user> PGPASSWORD=<secret> PGSSLMODE=disable OPENAI_API_KEY=<secret> doubletab
+doubletab <...pg flags...> --llm-base-url http://127.0.0.1:11434/v1/v1 --llm-embedding-model nomic-embed-text --llm-chat-model llama3.3 --llm-code-model llama3.3
 ```
-
-Make sure that you have a PostgreSQL database running and the necessary environment variables set. The `OPENAI_API_KEY` environment variable is required to use the OpenAI API for natural language processing. DoubleTab will guide you through the process of creating your project from the database schema to the API endpoints. Just describe what kind of project/application you want to create, and DoubleTab will try to come up with right solutions.
 
 ## Roadmap
 
 - [ ] Standardized Codebase – Ensures consistency by following predefined coding patterns.
 - [ ] Code Execution – Run and validate generated Go code securely.
 - [ ] Memory - Remember user inputs and tools outputs to avoid endless loops of incorrect solutions.
-- [ ] Ollama Integration – Integrate Ollama for local LLMs.
 - [ ] Different DBs/languages – Support for different databases and programming languages.
 - [ ] Tests Generation – Automatically generate and run tests for the generated code.
 - [ ] Extensible Tools – Supports custom tools for additional automation.

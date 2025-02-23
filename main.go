@@ -11,10 +11,12 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/openai/openai-go"
+	"github.com/openai/openai-go/option"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/doubletabai/doubletab/pkg/config"
 	"github.com/doubletabai/doubletab/pkg/knowledgebase"
 	"github.com/doubletabai/doubletab/pkg/tooling"
 	"github.com/doubletabai/doubletab/pkg/vector"
@@ -36,7 +38,11 @@ When user asks for something that doesn't fit the workflow, consult the knowledg
 )
 
 func main() {
-	lvl, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to load config")
+	}
+	lvl, err := zerolog.ParseLevel(cfg.LogLevel)
 	if err != nil || lvl == zerolog.NoLevel {
 		lvl = zerolog.InfoLevel
 	}
@@ -45,18 +51,21 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn := fmt.Sprintf("host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
-		os.Getenv("PGHOST"), os.Getenv("PGPORT"), os.Getenv("PGDATABASE"), os.Getenv("PGUSER"), os.Getenv("PGPASSWORD"), os.Getenv("PGSSLMODE"))
+	conn := fmt.Sprintf("host='%s' port='%d' dbname='%s' user='%s' password='%s' sslmode='%s'",
+		cfg.PGHost, cfg.PGPort, cfg.PGDatabase, cfg.PGUser, cfg.PGPassword, cfg.PGSSLMode)
 
 	db, err := sqlx.ConnectContext(ctx, "postgres", conn)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to connect to database")
+		log.Fatal().Err(err).Msg("Failed to connect to project database")
 	}
 	defer db.Close()
 
-	openAICli := openai.NewClient()
-
-	vs, err := vector.New(ctx, openAICli)
+	var opts []option.RequestOption
+	if cfg.LLMBaseURL != "" {
+		opts = append(opts, option.WithBaseURL(cfg.LLMBaseURL))
+	}
+	llmCli := openai.NewClient(opts...)
+	vs, err := vector.New(ctx, cfg, llmCli)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize vector service")
 	}
@@ -77,13 +86,14 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to initialize memory service")
 	}
 
-	ts, err := tooling.New(db, ks, mem, openAICli)
+	ts, err := tooling.New(cfg, db, ks, mem, llmCli)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize tooling service")
 	}
 	defer ts.Clear()
 
 	pterm.DefaultBasicText.Println("Welcome to the" + pterm.LightMagenta(" DoubleTab ") + "AI assistant for backend development! What would you like to build today?")
+	pterm.DefaultBasicText.Printfln("Session ID: %s", sid)
 	question := os.Getenv("INITIAL_QUERY")
 	if question != "" {
 		question, err = pterm.DefaultInteractiveTextInput.
@@ -103,7 +113,7 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to get user input")
 	}
 
-	go runMainWorkflow(ctx, sid, question, ts, openAICli)
+	go runMainWorkflow(ctx, cfg, sid, question, ts, llmCli)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
@@ -119,7 +129,7 @@ func exitFunc(sid string) func() {
 	}
 }
 
-func runMainWorkflow(ctx context.Context, sid, question string, ts *tooling.Service, openAICli *openai.Client) {
+func runMainWorkflow(ctx context.Context, cfg *config.Config, sid, question string, ts *tooling.Service, openAICli *openai.Client) {
 	params := openai.ChatCompletionNewParams{
 		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage(mainWorkflowPrompt),
@@ -134,7 +144,7 @@ func runMainWorkflow(ctx context.Context, sid, question string, ts *tooling.Serv
 			ts.GenerateServerCodeTool(),
 			ts.QueryKnowledgeBaseTool(),
 		}),
-		Model: openai.F(openai.ChatModelGPT4oMini),
+		Model: openai.String(cfg.LLMChatModel),
 		Seed:  openai.Int(1),
 	}
 

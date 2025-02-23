@@ -117,7 +117,7 @@ func (s *Service) GenerateSchema(ctx context.Context, arguments string) string {
 			openai.SystemMessage(generateSchemaPrompt),
 			openai.UserMessage(openAPISpec),
 		}),
-		Model: openai.F(openai.ChatModelGPT4oMini),
+		Model: openai.String(s.CodeModel),
 		Seed:  openai.Int(1),
 	}
 

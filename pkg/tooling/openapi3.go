@@ -73,7 +73,7 @@ func (s *Service) GenerateOpenAPISpec(ctx context.Context, arguments string) str
 			openai.SystemMessage(generateOpenAPISpecPrompt),
 			openai.UserMessage(userInput),
 		}),
-		Model: openai.F(openai.ChatModelGPT4oMini),
+		Model: openai.String(s.ChatModel),
 		Seed:  openai.Int(1),
 	}
 

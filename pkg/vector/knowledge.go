@@ -12,7 +12,7 @@ type KnowledgeService struct {
 }
 
 func NewKnowledge(ctx context.Context, v *Service) (*KnowledgeService, error) {
-	_, err := v.DB.ExecContext(ctx, knowledgeSchemaSQL)
+	_, err := v.DB.ExecContext(ctx, fmt.Sprintf(knowledgeSchemaSQL, v.Dimensions))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create knowledge schema: %w", err)
 	}
