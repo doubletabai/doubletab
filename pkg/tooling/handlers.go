@@ -211,18 +211,9 @@ func (s *Service) SaveServerCode(_ context.Context, arguments string) string {
 		return fmt.Sprintf("Failed to unmarshal function arguments: %v", err)
 	}
 	code := args["server_go_code"].(string)
+	code = TrimNonCode(code, "go")
 
-	var rawCode string
-	parts := strings.Split(code, "```go")
-	if len(parts) == 2 {
-		rawCode = parts[1]
-		parts = strings.Split(rawCode, "```")
-		rawCode = parts[0]
-	} else {
-		rawCode = code
-	}
-
-	_, err = fh.WriteString(rawCode)
+	_, err = fh.WriteString(code)
 	if err != nil {
 		return fmt.Sprintf("Failed to write server.go file: %v", err)
 	}

@@ -41,4 +41,15 @@ INSERT INTO memory
 VALUES
 	(:session_id, :role, :content, :created_at, :embedding)
 `
+	queryMemorySQL = `
+SELECT
+	role, content
+FROM memory
+WHERE
+	session_id = $1
+ORDER BY
+	created_at DESC,
+	embedding <-> $2
+LIMIT 5
+`
 )

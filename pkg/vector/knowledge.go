@@ -31,12 +31,8 @@ func (s *KnowledgeService) Store(ctx context.Context, content string) error {
 	return s.StoreEmbedding(ctx, content, embedding)
 }
 
-func (s *KnowledgeService) StoreEmbedding(ctx context.Context, content string, embedding []float64) error {
-	embs32 := make([]float32, len(embedding))
-	for i, v := range embedding {
-		embs32[i] = float32(v)
-	}
-	_, err := s.V.DB.ExecContext(ctx, storeKnowledgeSQL, content, pgvector.NewVector(embs32))
+func (s *KnowledgeService) StoreEmbedding(ctx context.Context, content string, embedding []float32) error {
+	_, err := s.V.DB.ExecContext(ctx, storeKnowledgeSQL, content, pgvector.NewVector(embedding))
 	return err
 }
 

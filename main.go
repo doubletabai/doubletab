@@ -33,7 +33,12 @@ workflow is as follow:
 5. Generate Go code implementing handlers.
 6. Generate Go code implementing server.
 
-When user asks for something that doesn't fit the workflow, consult the knowledge base or ask clarifying questions.
+Important notes:
+- Always use provided tools to generate OpenAPI spec, schema, and code. Those tools are storing files on disk and
+  updating memory with relevant information.
+- When user asks to fix something, redo current step with fixed instructions.
+- Confirm each step with the user before proceeding to the next one.
+- When user asks for something that doesn't fit the workflow, consult the knowledge base or ask clarifying questions.
 `
 )
 
@@ -211,23 +216,7 @@ func runMainWorkflow(ctx context.Context, cfg *config.Config, sid, question stri
 				stream.Close()
 				return
 			}
-			var resp string
-			switch toolCall.Function.Name {
-			case tooling.GenerateOpenAPISpecToolName:
-				resp = ts.GenerateOpenAPISpec(ctx, toolCall.Function.Arguments)
-			case tooling.ListTablesToolName:
-				resp = ts.ListTables(ctx)
-			case tooling.GenerateSchemaToolName:
-				resp = ts.GenerateSchema(ctx, toolCall.Function.Arguments)
-			case tooling.StoreSchemaToolName:
-				resp = ts.StoreSchema(ctx, toolCall.Function.Arguments)
-			case tooling.GenerateHandlersCodeToolName:
-				resp = ts.GenerateHandlersCode(ctx)
-			case tooling.GenerateServerCodeToolName:
-				resp = ts.GenerateServerCode(ctx, toolCall.Function.Arguments)
-			case tooling.QueryKnowledgeBaseToolName:
-				resp = ts.QueryKnowledgeBase(ctx, toolCall.Function.Arguments)
-			}
+			resp := ts.HandleToolCall(ctx, toolCall.Function)
 			log.Debug().Msgf("Adding message to context from tool %s, resp: %s", toolCall.ID, resp)
 			if err := ts.Mem.Store(ctx, vector.RoleTool, resp); err != nil {
 				log.Err(err).Msg("Failed to store tool message")

@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	generateOpenAPISpecPrompt = `You are an AI that generates OpenAPI 3.0 specifications for REST APIs.
+	generateOpenAPISpecPrompt = `You are an AI assistant that generates OpenAPI 3.0 specifications for REST APIs.
 
-Generate an OpenAPI 3.0 YAML spec for an application described by user. The spec should follow a typical CRUD API
-structure:
+First, query memory for any relevant information. Then, based on the memory and user input, generate an OpenAPI 3.0 spec
+in YAML format. The spec should follow a typical CRUD API structure:
 
 - GET /resources: List all resources.
 - POST /resources: Create a new resource.
@@ -31,8 +31,6 @@ The API should:
 - Follow OpenAPI 3.0 syntax.
 - Include proper request/response models.
 - Avoid duplicating models just for Create/Update requests (eg. when some field like ID is not needed).
-
-Return only valid OpenAPI YAML in raw format (without yaml code block markdown syntax).
 `
 )
 
@@ -68,20 +66,11 @@ func (s *Service) GenerateOpenAPISpec(ctx context.Context, arguments string) str
 	userInput := args["user_input"].(string)
 
 	log.Debug().Msgf("Creating spec for question: %s", userInput)
-	params := openai.ChatCompletionNewParams{
-		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage(generateOpenAPISpecPrompt),
-			openai.UserMessage(userInput),
-		}),
-		Model: openai.String(s.ChatModel),
-		Seed:  openai.Int(1),
-	}
+	agent := s.Agent(generateOpenAPISpecPrompt, userInput).
+		WithTools(s.QueryMemoryTool()).
+		WithModel(s.ChatModel)
 
-	completion, err := s.OpenAICli.Chat.Completions.New(ctx, params)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to get completion")
-	}
-	resp := completion.Choices[0].Message.Content
+	spec := agent.Run(ctx)
 
 	if err := createBoilerPlate(); err != nil {
 		return fmt.Sprintf("Failed to create boilerplate: %v", err)
@@ -94,10 +83,12 @@ func (s *Service) GenerateOpenAPISpec(ctx context.Context, arguments string) str
 	}
 	defer fh.Close()
 
-	_, err = fh.WriteString(resp)
+	spec = TrimNonCode(spec, "yaml")
+
+	_, err = fh.WriteString(spec)
 	if err != nil {
 		return fmt.Sprintf("Failed to write openapi spec file: %v", err)
 	}
 
-	return resp
+	return spec
 }

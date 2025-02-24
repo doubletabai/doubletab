@@ -3,6 +3,8 @@ package vector
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/pgvector/pgvector-go"
@@ -39,19 +41,41 @@ func (s *MemoryService) Store(ctx context.Context, role, content string) error {
 	return s.StoreEmbedding(ctx, role, content, embedding)
 }
 
-func (s *MemoryService) StoreEmbedding(ctx context.Context, role, content string, embedding []float64) error {
-	embs32 := make([]float32, len(embedding))
-	for i, v := range embedding {
-		embs32[i] = float32(v)
-	}
-
+func (s *MemoryService) StoreEmbedding(ctx context.Context, role, content string, embedding []float32) error {
 	args := map[string]interface{}{
 		"session_id": s.SessionID,
 		"role":       role,
 		"content":    content,
 		"created_at": time.Now().UTC(),
-		"embedding":  pgvector.NewVector(embs32),
+		"embedding":  pgvector.NewVector(embedding),
 	}
 	_, err := s.V.DB.NamedExecContext(ctx, storeMemorySQL, args)
 	return err
+}
+
+type Memory struct {
+	Role    string `db:"role"`
+	Content string `db:"content"`
+}
+
+func (s *MemoryService) Query(ctx context.Context, query string) (string, error) {
+	embedding, err := s.V.GenerateEmbeddings(ctx, query)
+	if err != nil {
+		return "", err
+	}
+
+	var mem []Memory
+	err = s.V.DB.SelectContext(ctx, &mem, queryMemorySQL, s.SessionID, pgvector.NewVector(embedding))
+	if err != nil {
+		return "", err
+	}
+
+	// We want to feed an agent with the information in chronological order.
+	slices.Reverse(mem)
+
+	memories := make([]string, len(mem))
+	for _, m := range mem {
+		memories = append(memories, fmt.Sprintf("%s: %s", m.Role, m.Content))
+	}
+	return strings.Join(memories, "\n"), nil
 }

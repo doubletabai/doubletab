@@ -45,7 +45,7 @@ func (s *Service) Close() {
 	s.DB.Close()
 }
 
-func (s *Service) GenerateEmbeddings(ctx context.Context, text string) ([]float64, error) {
+func (s *Service) GenerateEmbeddings(ctx context.Context, text string) ([]float32, error) {
 	resp, err := s.OpenAICli.Embeddings.New(ctx, openai.EmbeddingNewParams{
 		Input:          openai.F[openai.EmbeddingNewParamsInputUnion](shared.UnionString(text)),
 		Model:          openai.String(s.Model),
@@ -54,5 +54,9 @@ func (s *Service) GenerateEmbeddings(ctx context.Context, text string) ([]float6
 	if err != nil {
 		return nil, err
 	}
-	return resp.Data[0].Embedding, nil
+	embedding := make([]float32, len(resp.Data[0].Embedding))
+	for i, v := range resp.Data[0].Embedding {
+		embedding[i] = float32(v)
+	}
+	return embedding, nil
 }
