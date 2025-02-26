@@ -58,12 +58,16 @@ func (s *Service) HandleToolCall(ctx context.Context, tool openai.ChatCompletion
 		return s.GenerateHandlersCode(ctx)
 	case GenerateServerCodeToolName:
 		return s.GenerateServerCode(ctx, tool.Arguments)
+	case SaveServerCodeToolName:
+		return s.SaveServerCode(ctx, tool.Arguments)
+	case BuildCodeToolName:
+		return s.BuildCode(ctx)
 	case QueryKnowledgeBaseToolName:
 		return s.QueryKnowledgeBase(ctx, tool.Arguments)
 	case QueryMemoryToolName:
 		return s.QueryMemory(ctx, tool.Arguments)
 	default:
-		return "I don't know how to handle this tool call."
+		return fmt.Sprintf("I don't know how to handle this tool call: %s", tool.Name)
 	}
 }
 
@@ -123,10 +127,14 @@ func (a *Agent) Run(ctx context.Context) string {
 			}
 			resp := a.ts.HandleToolCall(ctx, toolCall.Function)
 			log.Debug().Msgf("Adding message to context from tool %s, resp: %s", toolCall.ID, resp)
-			if err := a.ts.Mem.Store(ctx, vector.RoleTool, resp); err != nil {
-				log.Err(err).Msg("Failed to store tool message")
-			}
 			a.params.Messages.Value = append(a.params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
+
+			// Don't store memory tool responses as that would duplicate data in the memory.
+			if toolCall.Function.Name != QueryMemoryToolName {
+				if err := a.ts.Mem.Store(ctx, vector.RoleTool, resp); err != nil {
+					log.Err(err).Msg("Failed to store tool message")
+				}
+			}
 		}
 	}
 
