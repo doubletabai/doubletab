@@ -48,8 +48,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn := fmt.Sprintf("host=%s port=%s dbname=%s user=%s password=%s sslmode=%s",
-		os.Getenv("PGHOST"), os.Getenv("PGPORT"), os.Getenv("PGDATABASE"), os.Getenv("PGUSER"), os.Getenv("PGPASSWORD"), os.Getenv("PGSSLMODE"))
+	conn := fmt.Sprintf("host='%s' port='%s' dbname='%s' user='%s' password='%s' sslmode='%s'",
+		os.Getenv("PG_HOST"), os.Getenv("PG_PORT"), os.Getenv("PG_DATABASE"), os.Getenv("PG_USER"), os.Getenv("PG_PASSWORD"), os.Getenv("PG_SSLMODE"))
 
 	db, err := sqlx.ConnectContext(ctx, "postgres", conn)
 	if err != nil {
