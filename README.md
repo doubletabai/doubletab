@@ -11,6 +11,8 @@
 - [x] API Generation – Automatically generate structured API endpoints.
 - [x] Building - Make sure that the generated code is buildable. If not, fix it automatically.
 - [x] Ollama Integration – Integrate Ollama for local LLMs.
+- [x] Memory - Remember user inputs and tools outputs to avoid endless loops of incorrect solutions.
+- [x] Standardized Codebase – Ensures consistency by following predefined coding patterns.
 
 ## Installation
 
@@ -65,10 +67,13 @@ doubletab <...pg flags...> --llm-base-url http://127.0.0.1:11434/v1/v1 --llm-emb
 
 ## Roadmap
 
-- [ ] Standardized Codebase – Ensures consistency by following predefined coding patterns.
+- [x] Ollama Integration – Integrate Ollama for local LLMs.
+- [x] Standardized Codebase – Ensures consistency by following predefined coding patterns.
+- [x] Memory - Remember user inputs and tools outputs to avoid endless loops of incorrect solutions.
 - [ ] Code Execution – Run and validate generated Go code securely.
-- [ ] Memory - Remember user inputs and tools outputs to avoid endless loops of incorrect solutions.
-- [ ] Different DBs/languages – Support for different databases and programming languages.
 - [ ] Tests Generation – Automatically generate and run tests for the generated code.
+- [ ] Deployment – Deploy the generated code to a cloud provider.
+- [ ] Restore sessions – Restore previous sessions to continue working on a project.
+- [ ] Different DBs/languages – Support for different databases and programming languages.
 - [ ] Extensible Tools – Supports custom tools for additional automation.
 - [ ] Custom Knowledge Base – Create and apply custom knowledge bases for specific domains.
