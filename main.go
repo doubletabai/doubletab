@@ -164,6 +164,7 @@ func runMainWorkflow(ctx context.Context, cfg *config.Config, sid, question stri
 		if ctx.Err() != nil {
 			return
 		}
+		thinking, _ := pterm.DefaultSpinner.WithRemoveWhenDone(true).WithSequence([]string{"· ", " ·", "∙ ", " ∙"}...).Start("Thinking...")
 		stream := openAICli.Chat.Completions.NewStreaming(ctx, params)
 		acc := openai.ChatCompletionAccumulator{}
 
@@ -175,11 +176,15 @@ func runMainWorkflow(ctx context.Context, cfg *config.Config, sid, question stri
 			}
 			chunk := stream.Current()
 			acc.AddChunk(chunk)
-			if !begin && chunk.Choices[0].Delta.Content != "" {
+			chunkContents := chunk.Choices[0].Delta.Content
+			if !begin && chunkContents != "" {
 				begin = true
+				thinking.Stop()
 				pterm.DefaultBasicText.Print(pterm.LightMagenta("DoubleTab: "))
 			}
-			pterm.DefaultBasicText.Print(chunk.Choices[0].Delta.Content)
+			if chunkContents != "" {
+				pterm.DefaultBasicText.Print(chunk.Choices[0].Delta.Content)
+			}
 		}
 		if stream.Err() != nil {
 			log.Fatal().Err(stream.Err()).Msg("Failed to stream completion")
@@ -194,6 +199,7 @@ func runMainWorkflow(ctx context.Context, cfg *config.Config, sid, question stri
 				log.Err(err).Msg("Failed to store assistant message")
 			}
 			params.Messages.Value = append(params.Messages.Value, acc.Choices[0].Message)
+			thinking.Stop()
 			nextStep, err := pterm.DefaultInteractiveTextInput.
 				WithDefaultText(">").
 				WithDelimiter(" ").
@@ -216,6 +222,7 @@ func runMainWorkflow(ctx context.Context, cfg *config.Config, sid, question stri
 				stream.Close()
 				return
 			}
+			thinking.Stop()
 			resp := ts.HandleToolCall(ctx, toolCall.Function)
 			log.Debug().Msgf("Adding message to context from tool %s, resp: %s", toolCall.ID, resp)
 			if err := ts.Mem.Store(ctx, vector.RoleTool, resp); err != nil {
@@ -224,5 +231,6 @@ func runMainWorkflow(ctx context.Context, cfg *config.Config, sid, question stri
 			params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
 		}
 		stream.Close()
+		thinking.Stop()
 	}
 }
