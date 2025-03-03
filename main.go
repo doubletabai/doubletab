@@ -29,9 +29,8 @@ workflow is as follow:
 1. Agree with user on the entities and fields.
 2. Generate an OpenAPI 3.0 yaml specification.
 3. Generate PostgreSQL schema for the OpenAPI spec.
-4. Store generated schema in the database.
-5. Generate Go code implementing handlers.
-6. Generate Go code implementing server.
+4. Generate Go code implementing handlers.
+5. Generate Go code implementing server.
 
 Important notes:
 - Always use provided tools to generate OpenAPI spec, schema, and code. Those tools are storing files on disk and

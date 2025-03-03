@@ -12,7 +12,12 @@ import (
 )
 
 const (
-	generateSchemaPrompt = `You are an AI assistant that helps generate PostgreSQL schemas.
+	generateSchemaPrompt = `You are an AI assistant that helps generate PostgreSQL schemas. Your workflow is as follows:
+
+1. Generate a PostgreSQL schema based on an OpenAPI 3.0 specification.
+2. Store the generated schema in a PostgreSQL database using "store_schema" tool.
+
+## Generating a PostgreSQL Schema
 
 Based on given OpenAPI 3.0 spec, generate a PostgreSQL schema in a structured JSON format. The response must strictly
 follow this format:
@@ -91,9 +96,6 @@ func (s *Service) StoreSchemaTool() openai.ChatCompletionToolParam {
 }
 
 func (s *Service) ListTables(ctx context.Context) string {
-	spinner, _ := pterm.DefaultSpinner.Start("Listing tables...")
-	defer spinner.Stop()
-
 	tables := make([]string, 0)
 	if err := s.DB.SelectContext(ctx, &tables, "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"); err != nil {
 		log.Fatal().Err(err).Msg("Failed to query database")
@@ -112,21 +114,11 @@ func (s *Service) GenerateSchema(ctx context.Context, arguments string) string {
 	}
 	openAPISpec := args["openapi_spec"].(string)
 
-	params := openai.ChatCompletionNewParams{
-		Messages: openai.F([]openai.ChatCompletionMessageParamUnion{
-			openai.SystemMessage(generateSchemaPrompt),
-			openai.UserMessage(openAPISpec),
-		}),
-		Model: openai.String(s.CodeModel),
-		Seed:  openai.Int(1),
-	}
+	agent := s.Agent(generateSchemaPrompt, openAPISpec).
+		WithTools(s.ListTablesTool(), s.StoreSchemaTool()).
+		WithModel(s.ChatModel)
 
-	completion, err := s.OpenAICli.Chat.Completions.New(ctx, params)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to get completion")
-	}
-
-	return completion.Choices[0].Message.Content
+	return agent.Run(ctx)
 }
 
 type Schema struct {
@@ -141,9 +133,6 @@ type Column struct {
 }
 
 func (s *Service) StoreSchema(ctx context.Context, arguments string) string {
-	spinner, _ := pterm.DefaultSpinner.Start("Creating schema...")
-	defer spinner.Stop()
-
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
 		return fmt.Sprintf("Failed to unmarshal function arguments: %v", err)
