@@ -104,9 +104,9 @@ func (s *Service) ListTables(ctx context.Context) string {
 	return strings.Join(tables, ", ")
 }
 
-func (s *Service) GenerateSchema(ctx context.Context, arguments string) string {
-	spinner, _ := pterm.DefaultSpinner.Start("Generating schema...")
-	defer spinner.Stop()
+func (s *Service) GenerateSchema(ctx context.Context, multi *pterm.MultiPrinter, arguments string) string {
+	spinner := NewSpinner(multi, "Generating schema...")
+	defer spinner.Success("Schema generated")
 
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(arguments), &args); err != nil {

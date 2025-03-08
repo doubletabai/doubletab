@@ -55,9 +55,9 @@ func (s *Service) GenerateOpenAPISpecTool() openai.ChatCompletionToolParam {
 	}
 }
 
-func (s *Service) GenerateOpenAPISpec(ctx context.Context, arguments string) string {
-	spinner, _ := pterm.DefaultSpinner.Start("Generating OpenAPI spec...")
-	defer spinner.Stop()
+func (s *Service) GenerateOpenAPISpec(ctx context.Context, multi *pterm.MultiPrinter, arguments string) string {
+	spinner := NewSpinner(multi, "Generating OpenAPI spec...")
+	defer spinner.Success("OpenAPI spec generated")
 
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(arguments), &args); err != nil {

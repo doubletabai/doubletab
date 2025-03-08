@@ -88,9 +88,9 @@ func (s *Service) SaveServerCodeTool() openai.ChatCompletionToolParam {
 	}
 }
 
-func (s *Service) GenerateHandlersCode(ctx context.Context) string {
-	spinner, _ := pterm.DefaultSpinner.Start("Generating handlers...")
-	defer spinner.Stop()
+func (s *Service) GenerateHandlersCode(ctx context.Context, multi *pterm.MultiPrinter) string {
+	spinner := NewSpinner(multi, "Generating handlers...")
+	defer spinner.Success("Handlers generated")
 
 	absRoot, err := filepath.Abs(os.Getenv("PROJECT_ROOT"))
 	if err != nil {
@@ -116,9 +116,9 @@ func (s *Service) GenerateHandlersCode(ctx context.Context) string {
 	return "Handlers code generated successfully"
 }
 
-func (s *Service) GenerateServerCode(ctx context.Context, arguments string) string {
-	spinner, _ := pterm.DefaultSpinner.Start("Generating server code...")
-	defer spinner.Stop()
+func (s *Service) GenerateServerCode(ctx context.Context, multi *pterm.MultiPrinter, arguments string) string {
+	spinner := NewSpinner(multi, "Generating server code...")
+	defer spinner.Success("Server code generated")
 
 	var args map[string]interface{}
 	if err := json.Unmarshal([]byte(arguments), &args); err != nil {

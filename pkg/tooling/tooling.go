@@ -8,6 +8,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/openai/openai-go"
+	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
 
 	"github.com/doubletabai/doubletab/pkg/config"
@@ -44,20 +45,20 @@ func (s *Service) Clear() {
 	os.RemoveAll(s.TmpDir)
 }
 
-func (s *Service) HandleToolCall(ctx context.Context, tool openai.ChatCompletionMessageToolCallFunction) string {
+func (s *Service) HandleToolCall(ctx context.Context, multi *pterm.MultiPrinter, tool openai.ChatCompletionMessageToolCallFunction) string {
 	switch tool.Name {
 	case GenerateOpenAPISpecToolName:
-		return s.GenerateOpenAPISpec(ctx, tool.Arguments)
+		return s.GenerateOpenAPISpec(ctx, multi, tool.Arguments)
 	case ListTablesToolName:
 		return s.ListTables(ctx)
 	case GenerateSchemaToolName:
-		return s.GenerateSchema(ctx, tool.Arguments)
+		return s.GenerateSchema(ctx, multi, tool.Arguments)
 	case StoreSchemaToolName:
 		return s.StoreSchema(ctx, tool.Arguments)
 	case GenerateHandlersCodeToolName:
-		return s.GenerateHandlersCode(ctx)
+		return s.GenerateHandlersCode(ctx, multi)
 	case GenerateServerCodeToolName:
-		return s.GenerateServerCode(ctx, tool.Arguments)
+		return s.GenerateServerCode(ctx, multi, tool.Arguments)
 	case SaveServerCodeToolName:
 		return s.SaveServerCode(ctx, tool.Arguments)
 	case BuildCodeToolName:
@@ -125,7 +126,7 @@ func (a *Agent) Run(ctx context.Context) string {
 			if ctx.Err() != nil {
 				return "Context canceled"
 			}
-			resp := a.ts.HandleToolCall(ctx, toolCall.Function)
+			resp := a.ts.HandleToolCall(ctx, nil, toolCall.Function)
 			log.Debug().Msgf("Adding message to context from tool %s, resp: %s", toolCall.ID, resp)
 			a.params.Messages.Value = append(a.params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
 

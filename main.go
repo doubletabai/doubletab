@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -35,6 +37,8 @@ workflow is as follow:
 Important notes:
 - Always use provided tools to generate OpenAPI spec, schema, and code. Those tools are storing files on disk and
   updating memory with relevant information.
+- Generating PostgreSQL schema and generating Go code implementing handlers should be done **at the same time** rather
+  than sequentially.
 - When user asks to fix something, redo current step with fixed instructions.
 - Confirm each step with the user before proceeding to the next one.
 - When user asks for something that doesn't fit the workflow, consult the knowledge base or ask clarifying questions.
@@ -163,7 +167,7 @@ func runMainWorkflow(ctx context.Context, cfg *config.Config, sid, question stri
 		if ctx.Err() != nil {
 			return
 		}
-		thinking, _ := pterm.DefaultSpinner.WithRemoveWhenDone(true).WithSequence([]string{"· ", " ·", "∙ ", " ∙"}...).Start("Thinking...")
+		thinking, _ := pterm.DefaultSpinner.WithRemoveWhenDone(true).WithSequence("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏").Start("Thinking...")
 		stream := openAICli.Chat.Completions.NewStreaming(ctx, params)
 		acc := openai.ChatCompletionAccumulator{}
 
@@ -215,20 +219,40 @@ func runMainWorkflow(ctx context.Context, cfg *config.Config, sid, question stri
 			continue
 		}
 
+		thinking.Stop()
+
 		params.Messages.Value = append(params.Messages.Value, acc.Choices[0].Message)
+		wg := &sync.WaitGroup{}
+		wg.Add(len(toolCalls))
+		responses := sync.Map{}
+		multi := &pterm.MultiPrinter{}
+		multi = multi.WithWriter(os.Stdout).WithUpdateDelay(time.Millisecond * 200)
+		multi.Start()
 		for _, toolCall := range toolCalls {
 			if ctx.Err() != nil {
 				stream.Close()
 				return
 			}
-			thinking.Stop()
-			resp := ts.HandleToolCall(ctx, toolCall.Function)
-			log.Debug().Msgf("Adding message to context from tool %s, resp: %s", toolCall.ID, resp)
-			if err := ts.Mem.Store(ctx, vector.RoleTool, resp); err != nil {
-				log.Err(err).Msg("Failed to store tool message")
-			}
-			params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolCall.ID, resp))
+
+			go func(toolCall openai.ChatCompletionMessageToolCall) {
+				defer wg.Done()
+				resp := ts.HandleToolCall(ctx, multi, toolCall.Function)
+				responses.Store(toolCall.ID, resp)
+
+				log.Debug().Msgf("Adding message to context from tool %s, resp: %s", toolCall.ID, resp)
+				if err := ts.Mem.Store(ctx, vector.RoleTool, resp); err != nil {
+					log.Err(err).Msg("Failed to store tool message")
+				}
+			}(toolCall)
 		}
+		wg.Wait()
+		multi.Stop()
+		responses.Range(func(key, value interface{}) bool {
+			toolID := key.(string)
+			resp := value.(string)
+			params.Messages.Value = append(params.Messages.Value, openai.ToolMessage(toolID, resp))
+			return true
+		})
 		stream.Close()
 		thinking.Stop()
 	}
